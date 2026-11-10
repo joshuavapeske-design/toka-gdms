@@ -477,6 +477,19 @@ CREATE TABLE customer_confirmations (
     received_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+-- Immutable Customer Reply History (Audit Log of Every Inbound Reply & Questionnaire Response)
+CREATE TABLE customer_confirmation_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE RESTRICT,
+    inbound_sms_id UUID NOT NULL REFERENCES inbound_sms_messages(id) ON DELETE RESTRICT,
+    sender_phone TEXT NOT NULL,
+    response_code TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    raw_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+CREATE INDEX idx_conf_events_delivery ON customer_confirmation_events(delivery_id, created_at DESC);
+
 CREATE TABLE customer_disputes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE RESTRICT,
@@ -556,6 +569,20 @@ CREATE TABLE stock_movements (
 );
 CREATE INDEX idx_stock_movements_prod ON stock_movements(product_id);
 CREATE INDEX idx_stock_movements_type ON stock_movements(movement_type);
+
+-- Materialized Stock Balance with Row-Locking Support and Generated FSE
+CREATE TABLE inventory_balances (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    stock_location_id UUID NOT NULL REFERENCES stock_locations(id) ON DELETE RESTRICT,
+    full_sheets INT NOT NULL DEFAULT 0 CHECK (full_sheets >= 0),
+    half_sheets INT NOT NULL DEFAULT 0 CHECK (half_sheets >= 0),
+    fse NUMERIC(10, 2) GENERATED ALWAYS AS (full_sheets::numeric + (half_sheets::numeric * 0.5)) STORED,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_product_stock_location UNIQUE (product_id, stock_location_id)
+);
+CREATE INDEX idx_inventory_balances_prod ON inventory_balances(product_id);
+CREATE INDEX idx_inventory_balances_loc ON inventory_balances(stock_location_id);
 
 -- ============================================================================
 -- 10. GPS TELEMETRY & AUDIT TRAILS

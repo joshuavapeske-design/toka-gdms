@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types src/tests/business-rules.test.ts && node --experimental-strip-types src/tests/financial-integrity.test.ts"
+    "test": "node --experimental-strip-types src/tests/business-rules.test.ts && node --experimental-strip-types src/tests/financial-integrity.test.ts && node --experimental-strip-types src/tests/database-integrity.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -24,6 +24,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@tailwindcss/postcss": "^4.0.9",
     "@types/node": "^22.13.9",
     "@types/react": "^19.0.10",

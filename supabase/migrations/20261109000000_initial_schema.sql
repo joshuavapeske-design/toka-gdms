@@ -4,8 +4,13 @@
 -- Description: 27 tables, strict RLS, trigger locks, confirmed full/half sheet rules
 -- ============================================================================
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+DO $$ BEGIN
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+EXCEPTION WHEN OTHERS THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+EXCEPTION WHEN OTHERS THEN null; END $$;
 
 -- ============================================================================
 -- 1. ENUMS

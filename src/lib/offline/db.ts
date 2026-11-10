@@ -10,6 +10,8 @@ export interface QueuedOfflineDelivery {
   customerName: string;
   customerPhone: string;
   vehicleAssignmentId: string;
+  vehicleId?: string;
+  employeeId?: string;
   items: DeliveryItem[];
   payments: PaymentDeclaration[];
   subtotalAmount: number;
@@ -17,12 +19,13 @@ export interface QueuedOfflineDelivery {
   totalAmount: number;
   totalDeclaredPaid: number;
   outstandingBalance: number;
+  notes?: string | null;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   gpsAccuracyM?: number | null;
   deviceCapturedAt: string;
   isOfflineSubmission?: boolean;
-  syncStatus: 'pending' | 'syncing' | 'synced' | 'failed';
+  syncStatus: 'local_saved' | 'pending' | 'syncing' | 'synced' | 'needs_review' | 'failed';
   retryCount: number;
   errorMessage?: string;
   syncedAt?: string;

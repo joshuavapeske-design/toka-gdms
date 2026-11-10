@@ -142,6 +142,8 @@ export interface VehicleAssignment {
   id: string;
   vehicleId: string;
   vehiclePlate?: string;
+  vehicleRegistrationPlate?: string;
+  vehicleModel?: string;
   routeId: string;
   routeName?: string;
   driverId: string;

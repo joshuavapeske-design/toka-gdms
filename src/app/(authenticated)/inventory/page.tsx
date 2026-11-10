@@ -1,34 +1,48 @@
-import { Layers, Package, ArrowUpDown } from 'lucide-react';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Layers, Package, ArrowUpDown, Loader2 } from 'lucide-react';
 import { calculateStockFse } from '@/lib/decimal';
 
-// Placeholder stock data — will be fetched from Supabase in production
-const PLACEHOLDER_PRODUCTS = [
-  {
-    productId: '22222222-2222-2222-2222-222222222201',
-    productName: '4mm Clear Sheet Glass',
-    sku: 'GL-CLR-04-2418',
-    locationId: '33333333-3333-3333-3333-333333333301',
-    locationName: 'Main Central Warehouse',
-    fullSheets: 10,
-    halfSheets: 0,
-  },
-  {
-    productId: '22222222-2222-2222-2222-222222222202',
-    productName: '5mm Clear Sheet Glass',
-    sku: 'GL-CLR-05-2418',
-    locationId: '33333333-3333-3333-3333-333333333301',
-    locationName: 'Main Central Warehouse',
-    fullSheets: 9,
-    halfSheets: 1,
-  },
-];
+interface StockBalance {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  color?: string;
+  thicknessMm?: number;
+  stockLocationId: string;
+  locationName: string;
+  locationType: string;
+  fullSheets: number;
+  halfSheets: number;
+  fse: number;
+  updatedAt: string;
+}
 
 export default function InventoryPage() {
-  // In production, fetch from Supabase stock_movements aggregate or materialized view
-  const stockBalances = PLACEHOLDER_PRODUCTS.map((p) => ({
-    ...p,
-    fseTotal: calculateStockFse(p.fullSheets, p.halfSheets),
-  }));
+  const [balances, setBalances] = useState<StockBalance[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchInventory() {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/inventory');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.data) {
+            setBalances(data.data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load inventory balances:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchInventory();
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -39,7 +53,7 @@ export default function InventoryPage() {
           Inventory — Full Sheet Equivalents (FSE)
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Stock levels across all locations. FSE = Full Sheets + (Half Sheets × 0.5)
+          Live stock levels across all locations. FSE = Full Sheets + (Half Sheets × 0.5)
         </p>
       </div>
 
@@ -58,70 +72,77 @@ export default function InventoryPage() {
 
       {/* Stock table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
-                  Product & SKU
-                </th>
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
-                  Location
-                </th>
-                <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
-                  Full Sheets
-                </th>
-                <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
-                  Half Sheets
-                </th>
-                <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
-                  <span className="flex items-center justify-end gap-1">
-                    FSE Total
-                    <ArrowUpDown className="w-3 h-3" />
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {stockBalances.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-12">
-                    <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-slate-500">No Stock Data</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Connect to Supabase to view live inventory levels.
-                    </p>
-                  </td>
+        {loading ? (
+          <div className="p-12 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+            <p className="text-sm text-slate-500 mt-3">Loading inventory balances...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
+                    Product & SKU
+                  </th>
+                  <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
+                    Location
+                  </th>
+                  <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
+                    Full Sheets
+                  </th>
+                  <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
+                    Half Sheets
+                  </th>
+                  <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3">
+                    <span className="flex items-center justify-end gap-1">
+                      FSE Total
+                      <ArrowUpDown className="w-3 h-3" />
+                    </span>
+                  </th>
                 </tr>
-              ) : (
-                stockBalances.map((sb) => (
-                  <tr key={`${sb.productId}-${sb.locationId}`} className="border-b border-slate-100 hover:bg-slate-50/50">
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-semibold text-slate-800">{sb.productName}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{sb.sku}</div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{sb.locationName}</td>
-                    <td className="px-4 py-3 text-right text-sm font-bold text-slate-800">{sb.fullSheets}</td>
-                    <td className="px-4 py-3 text-right text-sm font-bold text-slate-800">{sb.halfSheets}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span
-                        className={`text-sm font-extrabold ${
-                          sb.fseTotal <= 5
-                            ? 'text-red-600'
-                            : sb.fseTotal <= 15
-                              ? 'text-amber-600'
-                              : 'text-emerald-600'
-                        }`}
-                      >
-                        {sb.fseTotal.toFixed(1)}
-                      </span>
+              </thead>
+              <tbody>
+                {balances.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12">
+                      <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-700">No Inventory Balances Recorded</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Stock receipts into warehouse will create and update live inventory balance rows.
+                      </p>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  balances.map((sb) => (
+                    <tr key={`${sb.productId}-${sb.stockLocationId}`} className="border-b border-slate-100 hover:bg-slate-50/50">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-800">{sb.productName}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {sb.sku} {sb.color && `· ${sb.color}`} {sb.thicknessMm ? `· ${sb.thicknessMm}mm` : ''}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-slate-700">
+                          {sb.locationName}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-bold text-slate-800">
+                        {sb.fullSheets}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-bold text-slate-800">
+                        {sb.halfSheets}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-black text-blue-600 font-mono">
+                        {Number(sb.fse).toFixed(1)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

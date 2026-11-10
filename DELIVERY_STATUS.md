@@ -25,8 +25,8 @@
 | **Dashboard & Reports** | TESTED | `src/app/(authenticated)/page.tsx` with revenue, deliveries, active disputes, stock alerts, and credit balances. |
 | **Offline Synchronization** | TESTED | `src/lib/offline/db.ts` (IndexedDB 5 stores), `src/lib/offline/sync.ts`, `src/app/api/sync/deliveries/route.ts` with UUIDv4 idempotency and `IDEMPOTENCY_PAYLOAD_MISMATCH` protection. |
 | **GPS Point-in-Time Capture** | IMPLEMENTED | Geolocation capture with lat, lng, and accuracy meters on delivery submission form. Hardware accuracy testing deferred to live field deployment. |
-| **Automated Test Suite** | TESTED | `pnpm test` executes both `business-rules.test.ts` (33 tests) and `financial-integrity.test.ts` (43 tests). All 76 passed (0 failures). |
-| **Production Build** | TESTED | `pnpm run build` completed with code 0 across all 15 routes and API endpoints. |
+| **Automated Test Suite** | TESTED | `pnpm test` executes `business-rules.test.ts` (33 tests), `financial-integrity.test.ts` (43 tests), and `database-integrity.test.ts` (35 tests on real PostgreSQL WASM kernel). All 111 tests passed (0 failures). |
+| **Production Build** | TESTED | `pnpm run build` completed with code 0 across all 20 routes, pages, and API endpoints. |
 
 *Status Legend:* `NOT STARTED` | `IN PROGRESS` | `IMPLEMENTED` | `TESTED` | `BLOCKED`
 

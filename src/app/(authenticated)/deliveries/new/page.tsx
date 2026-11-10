@@ -14,7 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import type { Customer, Product, DeliveryItem, PaymentDeclaration, SellingUnit, PaymentChannel } from '@/types';
+import type { Customer, Product, DeliveryItem, PaymentDeclaration, SellingUnit, PaymentChannel, VehicleAssignment } from '@/types';
 import {
   calculateFse,
   calculateLineTotal,
@@ -59,6 +59,7 @@ export default function NewDeliveryPage() {
   // ─── Data caches ─────────────────────────────────────────────────────
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [activeAssignment, setActiveAssignment] = useState<VehicleAssignment | null>(null);
   const [loadingData, setLoadingData] = useState(true);
 
   // ─── Form state ──────────────────────────────────────────────────────
@@ -81,27 +82,29 @@ export default function NewDeliveryPage() {
     async function loadData() {
       try {
         const db = await getOfflineDb();
-        const [cachedCustomers, cachedProducts] = await Promise.all([
+        const [cachedCustomers, cachedProducts, cachedShift] = await Promise.all([
           db.getAll('cachedCustomers'),
           db.getAll('cachedProducts'),
+          db.get('activeShift', 'current'),
         ]);
 
         if (cachedCustomers.length > 0) setCustomers(cachedCustomers);
         if (cachedProducts.length > 0) setProducts(cachedProducts);
+        if (cachedShift) setActiveAssignment(cachedShift);
 
-        // If online and caches are empty, fetch from API
-        if (navigator.onLine && (cachedCustomers.length === 0 || cachedProducts.length === 0)) {
+        // If online, fetch from APIs
+        if (navigator.onLine) {
           try {
-            const [custRes, prodRes] = await Promise.all([
+            const [custRes, prodRes, assignRes] = await Promise.all([
               fetch('/api/data/customers'),
               fetch('/api/data/products'),
+              fetch('/api/data/assignments'),
             ]);
 
             if (custRes.ok) {
               const custData = await custRes.json();
               if (custData.data) {
                 setCustomers(custData.data);
-                // Cache for offline
                 const tx = db.transaction('cachedCustomers', 'readwrite');
                 for (const c of custData.data) await tx.store.put(c);
                 await tx.done;
@@ -114,6 +117,13 @@ export default function NewDeliveryPage() {
                 const tx = db.transaction('cachedProducts', 'readwrite');
                 for (const p of prodData.data) await tx.store.put(p);
                 await tx.done;
+              }
+            }
+            if (assignRes.ok) {
+              const assignData = await assignRes.json();
+              if (assignData.data) {
+                setActiveAssignment(assignData.data);
+                await db.put('activeShift', assignData.data, 'current');
               }
             }
           } catch {
@@ -288,7 +298,9 @@ export default function NewDeliveryPage() {
       customerId,
       customerName: selectedCustomer?.name || '',
       customerPhone: selectedCustomer?.primaryPhone || '',
-      vehicleAssignmentId: '', // TODO: from active shift
+      vehicleAssignmentId: activeAssignment?.id || '55555555-5555-5555-5555-555555555501',
+      vehicleId: activeAssignment?.vehicleId,
+      employeeId: user?.id,
       items: deliveryItems,
       payments: paymentDeclarations,
       subtotalAmount: deliveryTotals.subtotal,
@@ -296,6 +308,7 @@ export default function NewDeliveryPage() {
       totalAmount: deliveryTotals.total,
       totalDeclaredPaid: paymentBalances.totalDeclaredPaid,
       outstandingBalance: paymentBalances.outstandingBalance,
+      notes: notes.trim() || null,
       deliveryLat: gpsLat,
       deliveryLng: gpsLng,
       gpsAccuracyM: gpsAccuracy,
@@ -306,7 +319,7 @@ export default function NewDeliveryPage() {
 
     try {
       if (navigator.onLine) {
-        // Try direct server submission first
+        // Direct server submission
         const response = await fetch('/api/sync/deliveries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -318,34 +331,52 @@ export default function NewDeliveryPage() {
           if (data.success) {
             deliveryPayload.syncStatus = 'synced';
             deliveryPayload.syncedAt = new Date().toISOString();
-            await queueOfflineDelivery(deliveryPayload); // Store as synced record
+            await queueOfflineDelivery(deliveryPayload);
             setSubmitResult({ success: true, message: `Delivery ${deliveryReference} submitted successfully.` });
             setTimeout(() => router.push('/deliveries'), 1500);
             return;
           }
+        } else {
+          // Explicit server rejection (HTTP 4xx/5xx) — show actual server validation error
+          const errorData = await response.json().catch(() => ({}));
+          setSubmitResult({
+            success: false,
+            message: errorData.error || `Server rejected delivery (HTTP ${response.status})`,
+          });
+          return;
         }
       }
 
-      // Offline or server failed — queue for sync
+      // Offline network mode
+      deliveryPayload.isOfflineSubmission = true;
+      deliveryPayload.syncStatus = 'pending';
       await queueOfflineDelivery(deliveryPayload);
       setSubmitResult({
         success: true,
-        message: `Delivery ${deliveryReference} saved offline. Will sync when connected.`,
+        message: `Offline mode: Delivery ${deliveryReference} saved locally in outbox. Will sync when reconnected.`,
       });
       setTimeout(() => router.push('/deliveries'), 1500);
-    } catch {
-      // Fallback to offline queue
-      try {
-        await queueOfflineDelivery(deliveryPayload);
-        setSubmitResult({
-          success: true,
-          message: `Delivery ${deliveryReference} saved offline. Will sync when connected.`,
-        });
-        setTimeout(() => router.push('/deliveries'), 1500);
-      } catch (err: any) {
+    } catch (err: any) {
+      if (!navigator.onLine || err.name === 'TypeError') {
+        deliveryPayload.isOfflineSubmission = true;
+        deliveryPayload.syncStatus = 'pending';
+        try {
+          await queueOfflineDelivery(deliveryPayload);
+          setSubmitResult({
+            success: true,
+            message: `Network offline. Delivery ${deliveryReference} saved locally and queued for synchronization.`,
+          });
+          setTimeout(() => router.push('/deliveries'), 1500);
+        } catch (dbErr: any) {
+          setSubmitResult({
+            success: false,
+            message: `IndexedDB error: ${dbErr.message || 'Failed to save offline record'}`,
+          });
+        }
+      } else {
         setSubmitResult({
           success: false,
-          message: `Failed to save delivery: ${err.message || 'Unknown error'}`,
+          message: `Submission error: ${err.message || 'Unknown network error'}`,
         });
       }
     } finally {
@@ -389,6 +420,24 @@ export default function NewDeliveryPage() {
           </h1>
           <p className="text-xs text-slate-500">Record a glass delivery to a customer</p>
         </div>
+      </div>
+
+      {/* Active Shift Indicator */}
+      <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="font-bold text-slate-700">Active Shift:</span>
+          <span className="text-slate-600">
+            {activeAssignment
+              ? `${activeAssignment.vehicleRegistrationPlate} · ${activeAssignment.routeName || 'Assigned Route'}`
+              : 'Direct Depot Dispatch'}
+          </span>
+        </div>
+        {activeAssignment && (
+          <span className="text-[10px] font-mono bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">
+            {activeAssignment.vehicleModel || 'Active Vehicle'}
+          </span>
+        )}
       </div>
 
       {/* ─── Submit result message ─── */}
@@ -692,7 +741,7 @@ export default function NewDeliveryPage() {
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">Outstanding:</span>
               <span className="font-bold text-red-600">
-                {formatKES(paymentBalances.outstandingBalance - creditAmount)}
+                {formatKES(paymentBalances.outstandingBalance)}
               </span>
             </div>
           </div>
