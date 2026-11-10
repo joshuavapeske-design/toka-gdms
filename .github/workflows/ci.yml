@@ -1,0 +1,49 @@
+name: TOKA GDMS CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - fix/pre-supabase-security-hardening
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toka-gdms-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Tests, types and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run business and PostgreSQL integrity tests
+        run: pnpm test
+
+      - name: TypeScript type check
+        run: pnpm run typecheck
+
+      - name: Build Next.js production application
+        run: pnpm run build
