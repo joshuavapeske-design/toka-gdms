@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Customer } from '@/types';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 // Default seed customers for development and initial field cache only when DB unconfigured
 const DEFAULT_CUSTOMERS: Customer[] = [
@@ -74,8 +75,7 @@ const DEFAULT_CUSTOMERS: Customer[] = [
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+    if (isSupabaseConfigured()) {
       const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase
         .from('customers')
@@ -93,7 +93,8 @@ export async function GET() {
           is_active,
           created_by,
           created_at,
-          updated_at
+          updated_at,
+          credit_accounts (current_balance)
         `)
         .eq('is_active', true)
         .order('name');
@@ -117,7 +118,7 @@ export async function GET() {
         defaultGpsLng: c.default_gps_lng ? parseFloat(c.default_gps_lng) : null,
         isCreditEligible: c.is_credit_eligible,
         creditLimit: parseFloat(c.credit_limit || '0'),
-        currentBalance: 0.0,
+        currentBalance: c.credit_accounts?.current_balance == null ? 0 : parseFloat(c.credit_accounts.current_balance),
         isActive: c.is_active,
         createdBy: c.created_by,
         createdAt: c.created_at,
@@ -127,8 +128,8 @@ export async function GET() {
       return NextResponse.json({ success: true, data: formatted });
     }
 
-    // In local sandbox where Supabase is not configured
-    return NextResponse.json({ success: true, data: DEFAULT_CUSTOMERS });
+    if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: DEFAULT_CUSTOMERS, simulated: true });
+    return NextResponse.json({ success: false, error: 'Supabase is not configured; customer records are unavailable.' }, { status: 503 });
   } catch (err: any) {
     console.error('[CUSTOMERS API EXCEPTION]', err);
     return NextResponse.json(

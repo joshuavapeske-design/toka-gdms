@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 const resolveDisputeSchema = z.object({
   disputeId: z.string().uuid({ message: 'Valid disputeId is required' }),
@@ -11,9 +12,9 @@ const resolveDisputeSchema = z.object({
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, data: [] });
+    if (!isSupabaseConfigured()) {
+      if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: [], simulated: true });
+      return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -78,9 +79,9 @@ export async function POST(request: Request) {
 
     const { disputeId, resolutionNotes } = parsed.data;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, simulated: true });
+    if (!isSupabaseConfigured()) {
+      if (isExplicitDemoMode()) return NextResponse.json({ success: true, simulated: true });
+      return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -92,17 +93,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data, error } = await supabase
-      .from('customer_disputes')
-      .update({
-        is_active: false,
-        investigated_by: user.id,
-        resolution_notes: resolutionNotes,
-        resolved_at: new Date().toISOString(),
-      })
-      .eq('id', disputeId)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('resolve_customer_dispute', {
+      p_dispute_id: disputeId,
+      p_resolution_notes: resolutionNotes,
+    });
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });

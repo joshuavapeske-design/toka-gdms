@@ -259,11 +259,21 @@ export default function NewDeliveryPage() {
     validationErrors.push('Total payments exceed invoice amount');
   }
 
+  const explicitCreditAmount = payments.filter((payment) => payment.channel === 'credit')
+    .reduce((sum, payment) => sum + payment.declaredAmount, 0);
+  if (Math.abs(explicitCreditAmount - paymentBalances.outstandingBalance) > 0.01) {
+    validationErrors.push(`Add an explicit credit declaration equal to the remaining balance (${formatKES(paymentBalances.outstandingBalance)}), or record additional money received.`);
+  }
+
   const isValid = validationErrors.length === 0;
 
   // ─── Submit delivery ─────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!isValid || isSubmitting) return;
+    if (!activeAssignment) {
+      setSubmitResult({ success: false, message: 'No active vehicle shift is assigned. Contact a manager before recording this delivery.' });
+      return;
+    }
     setIsSubmitting(true);
     setSubmitResult(null);
 
@@ -298,7 +308,7 @@ export default function NewDeliveryPage() {
       customerId,
       customerName: selectedCustomer?.name || '',
       customerPhone: selectedCustomer?.primaryPhone || '',
-      vehicleAssignmentId: activeAssignment?.id || '55555555-5555-5555-5555-555555555501',
+      vehicleAssignmentId: activeAssignment.id,
       vehicleId: activeAssignment?.vehicleId,
       employeeId: user?.id,
       items: deliveryItems,
@@ -430,7 +440,7 @@ export default function NewDeliveryPage() {
           <span className="text-slate-600">
             {activeAssignment
               ? `${activeAssignment.vehicleRegistrationPlate} · ${activeAssignment.routeName || 'Assigned Route'}`
-              : 'Direct Depot Dispatch'}
+              : 'No active vehicle assignment'}
           </span>
         </div>
         {activeAssignment && (

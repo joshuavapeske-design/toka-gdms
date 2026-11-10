@@ -73,6 +73,23 @@ async function runDatabaseTests() {
   await db.exec(sql2);
   assert(true, '20261110000000_rls_policies_and_atomic_rpc.sql applied cleanly');
 
+  const sql3 = fs.readFileSync(path.resolve('supabase/migrations/20261110190000_pre_supabase_security_hardening.sql'), 'utf8');
+  await db.exec(sql3);
+  assert(true, '20261110190000_pre_supabase_security_hardening.sql applied cleanly');
+
+  const privilegeChecks = await db.query<any>(`
+    SELECT
+      has_function_privilege('anon', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS anon_stock_receive,
+      has_function_privilege('authenticated', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS authenticated_sms_processor,
+      has_function_privilege('service_role', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS service_sms_processor,
+      has_function_privilege('authenticated', 'public.submit_delivery_atomic(text,uuid,text,uuid,uuid,uuid,numeric,numeric,numeric,numeric,numeric,payment_status_enum,numeric,numeric,numeric,timestamp with time zone,boolean,text,jsonb,jsonb,uuid)', 'EXECUTE') AS authenticated_delivery_submit
+  `);
+  const grants = privilegeChecks.rows[0];
+  assert(grants.anon_stock_receive === false, 'Anonymous users cannot execute stock receipt RPC');
+  assert(grants.authenticated_sms_processor === false, 'Authenticated users cannot forge provider SMS RPC calls');
+  assert(grants.service_sms_processor === true, 'Service role can process provider SMS callbacks');
+  assert(grants.authenticated_delivery_submit === true, 'Authenticated employees can execute the delivery RPC');
+
   // Verify inventory_balances table exists
   const tableCheck = await db.query<any>(`
     SELECT table_name FROM information_schema.tables 

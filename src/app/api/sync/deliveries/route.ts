@@ -10,6 +10,7 @@ import {
 } from '@/lib/decimal';
 import type { DeliveryItem, PaymentDeclaration } from '@/types';
 import crypto from 'crypto';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 // ── Zod Runtime Validation Schemas (Strict, No Silent Normalization) ─────────
 const deliveryItemInputSchema = z.object({
@@ -82,6 +83,11 @@ function computeCanonicalPayloadHash(payload: {
     externalRef?: string | null;
     notes?: string | null;
   }>;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  gpsAccuracyM?: number | null;
+  deviceCapturedAt?: string | null;
+  isOfflineSubmission?: boolean;
 }): string {
   const sortedItems = [...payload.items]
     .sort((a, b) => a.productId.localeCompare(b.productId) || a.sellingUnit.localeCompare(b.sellingUnit))
@@ -93,7 +99,7 @@ function computeCanonicalPayloadHash(payload: {
 
   const sortedPayments = [...(payload.payments || [])]
     .sort((a, b) => a.channel.localeCompare(b.channel) || (a.externalRef || '').localeCompare(b.externalRef || ''))
-    .map((p) => `${p.channel}:${Number(p.declaredAmount).toFixed(2)}:${p.externalRef || ''}`)
+    .map((p) => `${p.channel}:${Number(p.declaredAmount).toFixed(2)}:${p.externalRef || ''}:${p.notes || ''}`)
     .join('|');
 
   const raw = [
@@ -103,6 +109,11 @@ function computeCanonicalPayloadHash(payload: {
     payload.vehicleAssignmentId,
     (payload.discountAmount || 0).toFixed(2),
     payload.notes || '',
+    payload.deliveryLat == null ? '' : payload.deliveryLat.toFixed(7),
+    payload.deliveryLng == null ? '' : payload.deliveryLng.toFixed(7),
+    payload.gpsAccuracyM == null ? '' : payload.gpsAccuracyM.toFixed(2),
+    payload.deviceCapturedAt || '',
+    payload.isOfflineSubmission ? 'offline' : 'online',
     sortedItems,
     sortedPayments,
   ].join('::');
@@ -156,6 +167,16 @@ export async function POST(request: Request) {
 
     const totalMoneyDeclared = paymentBalances.totalDeclaredPaid;
     const outstandingBalance = paymentBalances.outstandingBalance;
+    const declaredCredit = payload.payments.filter((payment) => payment.channel === 'credit')
+      .reduce((sum, payment) => sum + payment.declaredAmount, 0);
+    if (totalMoneyDeclared > deliveryTotals.total + 0.01) {
+      return NextResponse.json({ success: false, error: 'Declared money received cannot exceed invoice total.' }, { status: 422 });
+    }
+    if (Math.abs(declaredCredit - outstandingBalance) > 0.01) {
+      return NextResponse.json({ success: false, error: outstandingBalance > 0
+        ? `An explicit credit declaration equal to the outstanding balance (KES ${outstandingBalance.toFixed(2)}) is required.`
+        : 'Credit cannot be declared when the invoice is fully paid.' }, { status: 422 });
+    }
 
     let paymentStatus: 'unpaid' | 'partially_paid' | 'fully_paid' | 'credit' = 'unpaid';
     if (totalMoneyDeclared >= deliveryTotals.total && deliveryTotals.total > 0) {
@@ -176,11 +197,15 @@ export async function POST(request: Request) {
       notes: payload.notes,
       items: payload.items,
       payments: payload.payments,
+      deliveryLat: payload.deliveryLat,
+      deliveryLng: payload.deliveryLng,
+      gpsAccuracyM: payload.gpsAccuracyM,
+      deviceCapturedAt: payload.deviceCapturedAt,
+      isOfflineSubmission: payload.isOfflineSubmission,
     });
 
     // ── 3. Database Persistence (Atomic Supabase RPC) ──────────────────────
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const isConfigured = supabaseUrl && !supabaseUrl.includes('placeholder');
+    const isConfigured = isSupabaseConfigured();
 
     if (isConfigured) {
       const supabase = await createServerSupabaseClient();
@@ -203,7 +228,7 @@ export async function POST(request: Request) {
         .maybeSingle();
 
       if (existingDelivery) {
-        if (existingDelivery.payload_hash && existingDelivery.payload_hash !== canonicalHash) {
+        if (!existingDelivery.payload_hash || existingDelivery.payload_hash !== canonicalHash) {
           return NextResponse.json(
             {
               success: false,
@@ -311,7 +336,9 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── Local Simulation Mode (Development without Supabase) ───────────────
+    if (!isExplicitDemoMode()) return NextResponse.json({ success: false, error: 'Supabase is not configured; delivery persistence is unavailable.' }, { status: 503 });
+
+    // Explicit local-development simulation only.
     return NextResponse.json({
       success: true,
       simulated: true,

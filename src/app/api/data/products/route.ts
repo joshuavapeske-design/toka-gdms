@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Product } from '@/types';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 // Default seed products matching database schema (Standard Full Sheets & Ordered Half Sheets)
 const DEFAULT_PRODUCTS: Product[] = [
@@ -99,8 +100,7 @@ const DEFAULT_PRODUCTS: Product[] = [
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+    if (isSupabaseConfigured()) {
       const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase
         .from('products')
@@ -149,8 +149,8 @@ export async function GET() {
       return NextResponse.json({ success: true, data: formatted });
     }
 
-    // Fallback default products for offline/dev
-    return NextResponse.json({ success: true, data: DEFAULT_PRODUCTS });
+    if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: DEFAULT_PRODUCTS, simulated: true });
+    return NextResponse.json({ success: false, error: 'Supabase is not configured; product records are unavailable.' }, { status: 503 });
   } catch (err: any) {
     console.error('[PRODUCTS API EXCEPTION]', err);
     return NextResponse.json(

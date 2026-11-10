@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { VehicleAssignment } from '@/types';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 // Default seed assignment for offline/local simulation
 const DEFAULT_ASSIGNMENT: VehicleAssignment = {
@@ -23,8 +24,7 @@ const DEFAULT_ASSIGNMENT: VehicleAssignment = {
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+    if (isSupabaseConfigured()) {
       const supabase = await createServerSupabaseClient();
       const {
         data: { user },
@@ -54,6 +54,8 @@ export async function GET() {
           salesperson:salesperson_id (full_name)
         `)
         .eq('is_active', true)
+        .eq('shift_date', new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date()))
+        .lte('started_at', new Date().toISOString())
         .or(`driver_id.eq.${user.id},salesperson_id.eq.${user.id}`)
         .order('started_at', { ascending: false })
         .limit(1)
@@ -97,8 +99,8 @@ export async function GET() {
       return NextResponse.json({ success: true, data: null });
     }
 
-    // In local development simulation mode
-    return NextResponse.json({ success: true, data: DEFAULT_ASSIGNMENT });
+    if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: DEFAULT_ASSIGNMENT, simulated: true });
+    return NextResponse.json({ success: false, error: 'Supabase is not configured; no active shift can be verified.' }, { status: 503 });
   } catch (err: any) {
     console.error('[ASSIGNMENTS API EXCEPTION]', err);
     return NextResponse.json(

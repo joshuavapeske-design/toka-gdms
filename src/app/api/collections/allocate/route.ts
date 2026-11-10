@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 const allocateSchema = z.object({
   collectionId: z.string().uuid({ message: 'Valid collectionId is required' }),
@@ -23,8 +24,8 @@ export async function POST(request: Request) {
 
     const { collectionId, deliveryId, amount } = parsed.data;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+    if (!isSupabaseConfigured()) {
+      if (!isExplicitDemoMode()) return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
       return NextResponse.json({
         success: true,
         simulated: true,

@@ -3,6 +3,7 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 const PUBLIC_PATHS = ['/login', '/api/webhooks'];
 
@@ -11,7 +12,7 @@ export async function middleware(request: NextRequest) {
 
   // Allow public paths and static assets
   if (
-    PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname.endsWith('.ico') ||
@@ -23,13 +24,12 @@ export async function middleware(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  // If Supabase is not configured, allow access (dev mode)
-  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
-    return response;
+  if (!isSupabaseConfigured()) {
+    if (isExplicitDemoMode()) return response;
+    return new NextResponse('TOKA GDMS is not configured. Valid Supabase credentials are required.', { status: 503, headers: { 'Cache-Control': 'no-store' } });
   }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

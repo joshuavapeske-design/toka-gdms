@@ -1,7 +1,8 @@
 // TOKA GDMS — Server-Side Auth Helpers
 
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import type { UserRole, Profile } from '@/types';
+import type { UserRole } from '@/types';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 export interface AuthUser {
   id: string;
@@ -17,6 +18,8 @@ export interface AuthUser {
  * Returns null if not authenticated or profile is missing/inactive.
  */
 export async function getAuthUser(): Promise<AuthUser | null> {
+  if (isExplicitDemoMode() && !isSupabaseConfigured()) return null;
+  if (!isSupabaseConfigured()) throw new Error('Supabase configuration is required for authentication.');
   const supabase = await createServerSupabaseClient();
 
   const {

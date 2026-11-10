@@ -2,22 +2,17 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/sms/africas-talking';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 export async function POST(request: Request) {
   try {
     // ── 0. Mandatory Webhook Authentication ──────────────────────────────────
     const configuredSecret = process.env.AFRICAS_TALKING_WEBHOOK_SECRET;
-    const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
-
-    if (!configuredSecret) {
-      if (!isDevOrTest) {
-        console.error('[SMS WEBHOOK] Fatal: AFRICAS_TALKING_WEBHOOK_SECRET is not configured in production.');
-        return NextResponse.json(
-          { success: false, error: 'Webhook secret is not configured' },
-          { status: 500 }
-        );
-      }
-    } else {
+    const demoWithoutDatabase = isExplicitDemoMode() && !isSupabaseConfigured();
+    if (!configuredSecret && !demoWithoutDatabase) {
+      return NextResponse.json({ success: false, error: 'Webhook secret is not configured.' }, { status: 500 });
+    }
+    if (configuredSecret) {
       const secretHeader =
         request.headers.get('x-webhook-secret') ||
         request.headers.get('x-api-key') ||
@@ -78,13 +73,11 @@ export async function POST(request: Request) {
 
     console.log(`[INBOUND SMS] From: ${from} | Provider ID: ${messageId} | Body: "${text}"`);
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const isConfigured = supabaseUrl && !supabaseUrl.includes('placeholder') && !!serviceKey;
-
+    const isConfigured = isSupabaseConfigured() && Boolean(serviceKey) && !serviceKey.includes('placeholder');
     if (!isConfigured) {
-      console.log('[INBOUND SMS] Admin Supabase client not configured in environment. Simulating response.');
-      return NextResponse.json({ success: true, simulated: true });
+      if (isExplicitDemoMode()) return NextResponse.json({ success: true, simulated: true });
+      return NextResponse.json({ success: false, error: 'SMS processing infrastructure is not configured.' }, { status: 503 });
     }
 
     // Use admin client (bypasses RLS for public inbound webhook)
@@ -110,7 +103,9 @@ export async function POST(request: Request) {
     const ref = rpcResult?.delivery_reference || '';
 
     // ── 3. Send SMS Feedback According to Atomic State Transition ───────────
-    if (status === 'invalid_reference') {
+    if (status === 'ambiguous') {
+      await sendSms({ to: from, message: 'TOKA GLASS: More than one recent delivery is awaiting a reply. Please include the delivery reference from your receipt.' });
+    } else if (status === 'invalid_reference') {
       await sendSms({
         to: from,
         message: `TOKA GLASS: Delivery reference ${rpcResult?.reference || ''} was not found. Please verify the code or call 0700000000.`,
