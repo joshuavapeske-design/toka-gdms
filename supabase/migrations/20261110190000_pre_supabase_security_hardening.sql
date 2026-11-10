@@ -1923,8 +1923,8 @@ BEGIN
     )
       AND attempts < 6
     ORDER BY created_at
-    FOR UPDATE SKIP LOCKED
     LIMIT p_batch_size
+    FOR UPDATE SKIP LOCKED
   )
   UPDATE notifications n
   SET status = 'sending',
