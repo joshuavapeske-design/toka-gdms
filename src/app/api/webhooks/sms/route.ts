@@ -2,23 +2,36 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/sms/africas-talking';
+import { timingSafeEqual } from 'node:crypto';
 import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
+
+function secretMatches(received: string | null, expected: string): boolean {
+  if (!received) return false;
+  const left = Buffer.from(received);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 export async function POST(request: Request) {
   try {
     // ── 0. Mandatory Webhook Authentication ──────────────────────────────────
     const configuredSecret = process.env.AFRICAS_TALKING_WEBHOOK_SECRET;
     const demoWithoutDatabase = isExplicitDemoMode() && !isSupabaseConfigured();
-    if (!configuredSecret && !demoWithoutDatabase) {
-      return NextResponse.json({ success: false, error: 'Webhook secret is not configured.' }, { status: 500 });
+    const validConfiguredSecret = Boolean(
+      configuredSecret &&
+      configuredSecret.length >= 32 &&
+      !/^(your_|replace-|placeholder)/i.test(configuredSecret)
+    );
+    if (!validConfiguredSecret && !demoWithoutDatabase) {
+      return NextResponse.json({ success: false, error: 'A non-placeholder webhook secret of at least 32 characters is required.' }, { status: 500 });
     }
-    if (configuredSecret) {
+    if (validConfiguredSecret && configuredSecret) {
       const secretHeader =
         request.headers.get('x-webhook-secret') ||
         request.headers.get('x-api-key') ||
         request.headers.get('authorization')?.replace('Bearer ', '');
 
-      if (secretHeader !== configuredSecret) {
+      if (!secretMatches(secretHeader, configuredSecret)) {
         console.warn('[SMS WEBHOOK] Unauthorized webhook attempt: secret mismatch.');
         return NextResponse.json({ success: false, error: 'Unauthorized webhook call' }, { status: 401 });
       }

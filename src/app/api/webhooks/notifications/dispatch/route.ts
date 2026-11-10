@@ -15,7 +15,7 @@ function secretMatches(received: string | null, expected: string): boolean {
 
 export async function POST(request: Request) {
   const expected = process.env.TOKA_NOTIFICATION_WORKER_SECRET;
-  if (!expected || expected.length < 32) {
+  if (!expected || expected.length < 32 || /^(replace-|placeholder|your_)/i.test(expected)) {
     return NextResponse.json({ success: false, error: 'Notification worker secret is not configured securely.' }, { status: 503 });
   }
   const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;

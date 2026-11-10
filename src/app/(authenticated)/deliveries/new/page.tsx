@@ -338,6 +338,10 @@ export default function NewDeliveryPage() {
 
         if (response.ok) {
           const data = await response.json();
+          if (data.success && data.simulated) {
+            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was simulated and was NOT saved to the TOKA business database.` });
+            return;
+          }
           if (data.success) {
             deliveryPayload.syncStatus = 'synced';
             deliveryPayload.syncedAt = new Date().toISOString();
