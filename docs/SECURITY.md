@@ -32,16 +32,18 @@
   ```
 - Public execution is revoked by default; execution is granted exclusively to specific authenticated roles.
 
-### C. Realistic Immutability Boundaries
+### C. Realistic Immutability Boundaries & Database Triggers
 - GDMS does not claim cryptographic immutability against database administrators or infrastructure owners.
-- The append-only guarantee is enforced against:
-  - All application users (Owner, Manager, Salesperson, Driver, Cash Collector, Accountant).
-  - External API consumers via Row-Level Security policies and PostgreSQL triggers.
-  - Database-level automated daily point-in-time recovery (PITR) backups prevent unauthorized administrative truncation.
+- The append-only and anti-tamper guarantee is enforced through PostgreSQL kernel-level triggers:
+  1. `protect_delivery_immutability()`: Strictly blocks modification of core financial fields (`total_amount`, `total_declared_paid`, `outstanding_balance`, `customer_id`, `created_by`, `payload_hash`) after creation. Updates are restricted to operational workflow status transitions.
+  2. `prevent_immutable_delete()`: Blocks `DELETE` operations on deliveries, delivery items, payment declarations, stock movements, and customer confirmations.
+  3. `protect_profile_privileges()`: Ensures non-owners cannot escalate their role or reactivate their account.
+  4. `computeCanonicalPayloadHash()`: SHA-256 canonical hashing of delivery payloads enforces strict idempotency, rejecting any resubmission with altered lines or amounts (`IDEMPOTENCY_PAYLOAD_MISMATCH`).
 
-### D. Inbound Webhook Protection & Idempotency
-- Africa's Talking incoming webhooks validate secret authentication tokens and signature headers.
-- Duplicate carrier deliveries are deduplicated using `provider_message_id` with `UNIQUE` constraints in `inbound_sms_messages`.
+### D. Inbound Webhook Protection & Sender Authentication
+- Africa's Talking incoming webhooks validate secret authentication tokens (`AFRICAS_TALKING_WEBHOOK_SECRET`).
+- Duplicate carrier webhooks are deduplicated using `provider_message_id` with `UNIQUE` constraints in `inbound_sms_messages`.
+- **Sender Phone Verification**: Delivery confirmations and disputes check that the inbound sender phone matches the registered primary or alternate phone for the customer associated with the delivery, rejecting spoofing or unauthorized third-party confirmations.
 
 ### E. Account Bootstrapping & Identity Defense
 - Public self-registration is disabled.

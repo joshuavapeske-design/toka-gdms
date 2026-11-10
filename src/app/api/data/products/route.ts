@@ -122,29 +122,40 @@ export async function GET() {
         .eq('is_active', true)
         .order('sku');
 
-      if (!error && data && data.length > 0) {
-        const formatted: Product[] = data.map((p: any) => ({
-          id: p.id,
-          categoryId: p.category_id,
-          categoryName: p.product_categories?.name,
-          sku: p.sku,
-          name: p.name,
-          thicknessMm: parseFloat(p.thickness_mm),
-          color: p.color,
-          standardDimensionLabel: p.standard_dimension_label,
-          standardFullSheetPrice: parseFloat(p.standard_full_sheet_price),
-          standardHalfSheetPrice: parseFloat(p.standard_half_sheet_price),
-          isActive: p.is_active,
-          createdAt: p.created_at,
-          updatedAt: p.updated_at,
-        }));
-        return NextResponse.json({ success: true, data: formatted });
+      if (error) {
+        console.error('[PRODUCTS API ERROR]', error);
+        return NextResponse.json(
+          { success: false, error: `Database error: ${error.message}` },
+          { status: 500 }
+        );
       }
+
+      const formatted: Product[] = (data || []).map((p: any) => ({
+        id: p.id,
+        categoryId: p.category_id,
+        categoryName: p.product_categories?.name,
+        sku: p.sku,
+        name: p.name,
+        thicknessMm: parseFloat(p.thickness_mm),
+        color: p.color,
+        standardDimensionLabel: p.standard_dimension_label,
+        standardFullSheetPrice: parseFloat(p.standard_full_sheet_price),
+        standardHalfSheetPrice: parseFloat(p.standard_half_sheet_price),
+        isActive: p.is_active,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+      }));
+
+      return NextResponse.json({ success: true, data: formatted });
     }
 
     // Fallback default products for offline/dev
     return NextResponse.json({ success: true, data: DEFAULT_PRODUCTS });
   } catch (err: any) {
-    return NextResponse.json({ success: true, data: DEFAULT_PRODUCTS });
+    console.error('[PRODUCTS API EXCEPTION]', err);
+    return NextResponse.json(
+      { success: false, error: err.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

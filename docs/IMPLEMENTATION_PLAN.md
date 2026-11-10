@@ -47,9 +47,9 @@ gantt
 ### Priority 2: Master Business Catalogs, Full/Half Sheet Inventory & Deliveries
 - **Scope**:
   - CRUD interfaces for Customers, Customer Contacts, and Customer-Specific Pricing.
-  - Glass Product Master with Full-Sheet, Half-Sheet, and Piece pricing; thickness and color specifications.
+  - Glass Product Master with Full-Sheet and Half-Sheet pricing; thickness and color specifications.
   - Vehicles, Routes, and Daily Vehicle-to-Staff Shift Assignments (`vehicle_assignments`).
-  - Mobile delivery creation form supporting `FULL_SHEET`, `HALF_SHEET`, `PIECE`.
+  - Mobile delivery creation form supporting `FULL_SHEET` and `HALF_SHEET`.
   - Half-sheet split transformation logic: 1 full sheet consumed $\rightarrow$ 2 half sheets produced (1 delivered, 1 in stock).
   - Atomic delivery submission RPC with `client_tx_id` idempotency.
 - **DoD**:

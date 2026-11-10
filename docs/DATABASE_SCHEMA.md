@@ -71,11 +71,10 @@ CREATE TYPE user_role_enum AS ENUM (
     'accountant'
 );
 
--- Confirmed sales units: Full Sheet (default), Half Sheet (by customer order), Piece (pre-cut item)
+-- Confirmed sales units: Full Sheet (default), Half Sheet (by customer order only)
 CREATE TYPE selling_unit_enum AS ENUM (
     'FULL_SHEET',
-    'HALF_SHEET',
-    'PIECE'
+    'HALF_SHEET'
 );
 
 CREATE TYPE operational_status_enum AS ENUM (
@@ -228,7 +227,6 @@ CREATE TABLE products (
     standard_dimension_label TEXT NOT NULL, -- e.g. '2440mm x 1830mm'
     standard_full_sheet_price NUMERIC(14, 2) NOT NULL CHECK (standard_full_sheet_price >= 0.00),
     standard_half_sheet_price NUMERIC(14, 2) NOT NULL CHECK (standard_half_sheet_price >= 0.00),
-    standard_piece_price NUMERIC(14, 2) CHECK (standard_piece_price IS NULL OR standard_piece_price >= 0.00),
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
@@ -354,7 +352,7 @@ CREATE TABLE delivery_items (
     product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
     selling_unit selling_unit_enum NOT NULL,
 
-    -- Confirmed Sales Model: Full Sheet, Half Sheet, or Piece
+    -- Confirmed Sales Model: Full Sheet (default) or Half Sheet (ordered)
     quantity INT NOT NULL CHECK (quantity > 0),
     full_sheet_equivalent NUMERIC(10, 2) NOT NULL CHECK (full_sheet_equivalent >= 0.00),
 
@@ -369,8 +367,7 @@ CREATE TABLE delivery_items (
     -- Validate FSE math per selling unit
     CONSTRAINT chk_item_fse CHECK (
         (selling_unit = 'FULL_SHEET' AND full_sheet_equivalent = quantity * 1.0) OR
-        (selling_unit = 'HALF_SHEET' AND full_sheet_equivalent = quantity * 0.5) OR
-        (selling_unit = 'PIECE' AND full_sheet_equivalent = 0.0)
+        (selling_unit = 'HALF_SHEET' AND full_sheet_equivalent = quantity * 0.5)
     )
 );
 CREATE INDEX idx_delivery_items_delivery ON delivery_items(delivery_id);
@@ -545,7 +542,6 @@ CREATE TABLE stock_movements (
     -- Track physical full and half sheets
     full_sheets_delta INT NOT NULL DEFAULT 0,
     half_sheets_delta INT NOT NULL DEFAULT 0,
-    pieces_delta INT NOT NULL DEFAULT 0,
     fse_delta NUMERIC(10, 2) NOT NULL, -- full_sheets_delta + (half_sheets_delta * 0.5)
     
     movement_type movement_type_enum NOT NULL,

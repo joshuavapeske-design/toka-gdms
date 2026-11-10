@@ -1,12 +1,11 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import {
-  Truck,
   ChevronLeft,
   Calendar,
   User,
   MapPin,
   Clock,
-  ShieldAlert,
   CheckCircle2,
   AlertTriangle,
   CreditCard,
@@ -22,14 +21,13 @@ interface DeliveryDetailPageProps {
 export default async function DeliveryDetailPage({ params }: DeliveryDetailPageProps) {
   const { id } = await params;
 
-  // Attempt to fetch from Supabase if configured
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   let delivery: any = null;
 
   if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
     try {
       const supabase = await createServerSupabaseClient();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('deliveries')
         .select(`
           *,
@@ -42,91 +40,18 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
         `)
         .eq('id', id)
         .maybeSingle();
-      delivery = data;
-    } catch {
-      // Fallback
+
+      if (!error && data) {
+        delivery = data;
+      }
+    } catch (err) {
+      console.error('[DELIVERY DETAIL ERROR]', err);
     }
   }
 
-  // Fallback demo delivery for dev inspection
+  // If delivery is not found in database, trigger 404
   if (!delivery) {
-    delivery = {
-      id,
-      delivery_reference: 'GD-202611-1001',
-      client_tx_id: 'e8b1b89d-2101-4475-8ef6-159b3d09a001',
-      operational_status: 'delivered',
-      payment_status: 'partially_paid',
-      reconciliation_status: 'pending_reconciliation',
-      customer_confirmation_status: 'confirmed',
-      subtotal_amount: 14700.0,
-      discount_amount: 0.0,
-      total_amount: 14700.0,
-      total_declared_paid: 10000.0,
-      outstanding_balance: 4700.0,
-      delivery_lat: -1.3032,
-      delivery_lng: 36.8524,
-      gps_accuracy_m: 12.5,
-      device_captured_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      customers: {
-        name: 'Apex Glaziers & Aluminum Works',
-        account_number: 'CUST-001',
-        primary_phone: '+254712345678',
-        delivery_area: 'Industrial Area, Road C',
-      },
-      profiles: {
-        full_name: 'John Kamau',
-        phone_number: '+254701234567',
-      },
-      delivery_items: [
-        {
-          id: 'item-1',
-          selling_unit: 'FULL_SHEET',
-          quantity: 2,
-          full_sheet_equivalent: 2.0,
-          official_unit_price: 3200.0,
-          applied_unit_price: 3200.0,
-          line_total: 6400.0,
-          products: { name: '4mm Clear Sheet Glass', sku: 'GL-CLR-04-2418' },
-        },
-        {
-          id: 'item-2',
-          selling_unit: 'HALF_SHEET',
-          quantity: 1,
-          full_sheet_equivalent: 0.5,
-          official_unit_price: 2200.0,
-          applied_unit_price: 2200.0,
-          line_total: 2200.0,
-          products: { name: '5mm Clear Sheet Glass', sku: 'GL-CLR-05-2418' },
-        },
-        {
-          id: 'item-3',
-          selling_unit: 'FULL_SHEET',
-          quantity: 1,
-          full_sheet_equivalent: 1.0,
-          official_unit_price: 6100.0,
-          applied_unit_price: 6100.0,
-          line_total: 6100.0,
-          products: { name: '6mm Clear Sheet Glass', sku: 'GL-CLR-06-2418' },
-        },
-      ],
-      payment_declarations: [
-        {
-          id: 'pay-1',
-          channel: 'cash',
-          declared_amount: 5000.0,
-          external_ref: null,
-          notes: 'Handed to driver',
-        },
-        {
-          id: 'pay-2',
-          channel: 'mpesa_company_till',
-          declared_amount: 5000.0,
-          external_ref: 'QK789XYZ10',
-          notes: 'Customer M-Pesa till payment',
-        },
-      ],
-    };
+    notFound();
   }
 
   const customer = delivery.customers;
@@ -178,7 +103,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
           <div className="text-[10px] text-slate-400 uppercase font-semibold">Outstanding Due</div>
           <div
             className={`text-base font-extrabold mt-1 ${
-              delivery.outstanding_balance > 0 ? 'text-red-600' : 'text-emerald-600'
+              Number(delivery.outstanding_balance) > 0 ? 'text-red-600' : 'text-emerald-600'
             }`}
           >
             {formatKES(delivery.outstanding_balance)}
@@ -217,7 +142,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
           </div>
           <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
             <MapPin className="w-3.5 h-3.5 text-slate-400" />
-            <span>{customer?.delivery_area}</span>
+            <span>{customer?.delivery_area || 'Not specified'}</span>
           </div>
         </div>
 
@@ -280,7 +205,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
                   </td>
                   <td className="px-4 py-3">
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
-                      {item.selling_unit.replace('_', ' ')}
+                      {item.selling_unit ? item.selling_unit.replace('_', ' ') : 'FULL SHEET'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-slate-800">{item.quantity}</td>
@@ -314,7 +239,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
 
         {payments.length === 0 ? (
           <div className="p-6 text-center text-xs text-slate-400">
-            No payments declared for this delivery. Full amount recorded on customer credit.
+            No payments declared for this delivery. Full invoice amount recorded on customer credit ledger.
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -322,7 +247,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
               <div key={p.id || idx} className="px-4 py-3 flex items-center justify-between text-xs">
                 <div>
                   <span className="font-bold text-slate-800 capitalize">
-                    {p.channel.replace(/_/g, ' ')}
+                    {p.channel ? p.channel.replace(/_/g, ' ') : 'Payment'}
                   </span>
                   {p.external_ref && (
                     <span className="ml-2 font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
@@ -337,19 +262,6 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
           </div>
         )}
       </div>
-
-      {/* Immutability & Anti-Fraud Footer */}
-      <div className="bg-slate-900 text-white rounded-xl p-4 flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="text-xs">
-          <div className="font-bold text-slate-200">Immutable Audit Trail Guaranteed</div>
-          <div className="text-slate-400 mt-0.5 leading-relaxed">
-            This delivery record is permanently protected by database triggers. Deletion,
-            silent price modification, and unrecorded adjustments are strictly prohibited.
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
-

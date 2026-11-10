@@ -24,10 +24,10 @@ GDMS establishes an append-only, zero-trust, verifiable record for every sheet, 
 TOKA's operational business model is strictly defined:
 1. **FULL SHEETS are sold by default.**
 2. **HALF SHEETS are sold ONLY when specifically ordered by a customer.**
-3. **PIECES**: Pre-cut standardized items (e.g., louvre blades, pre-cut standard mirrors) sold by item count.
+3. **No Arbitrary Piece or Custom Cutting Sales**: TOKA does not sell arbitrary pieces, custom offcuts, or variable dimension pieces.
 
 > [!IMPORTANT]
-> **No Arbitrary Custom Cutting**: TOKA does not run a custom dimension cutting shop ($L \times W$) with variable scrap thresholds. Do not implement complex multi-dimensional cutting algorithms or offcut management. Glass inventory is managed as **Full Sheets**, **Half Sheets**, and standardized **Pieces**.
+> **No Arbitrary Cutting**: TOKA does not run a custom dimension cutting shop ($L \times W$) with variable scrap thresholds. Glass inventory is managed exclusively as **Full Sheets** and physical **Half Sheets** produced on customer order.
 
 ### B. The Half-Sheet Split Transformation Rule
 - Producing a half sheet means splitting one physical full sheet into exactly two physical halves.

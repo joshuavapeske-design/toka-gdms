@@ -16,8 +16,8 @@ Glass delivery routes routinely travel through rural areas, construction depots,
 The IndexedDB schema exactly mirrors the PostgreSQL relational schema and Next.js TypeScript definitions:
 
 ```typescript
-// Confirmed Sales Units: Full Sheet by default, Half Sheet on customer order, Piece for pre-cut items
-export type SellingUnit = 'FULL_SHEET' | 'HALF_SHEET' | 'PIECE';
+// Confirmed Sales Units: Full Sheet by default, Half Sheet on customer order only
+export type SellingUnit = 'FULL_SHEET' | 'HALF_SHEET';
 
 export interface UnifiedDeliveryItem {
   id?: string;
@@ -26,7 +26,7 @@ export interface UnifiedDeliveryItem {
   productName: string;
   sellingUnit: SellingUnit;
   quantity: number; // Positive integer
-  fullSheetEquivalent: number; // 1.0 * quantity for FULL_SHEET, 0.5 * quantity for HALF_SHEET, 0.0 for PIECE
+  fullSheetEquivalent: number; // 1.0 * quantity for FULL_SHEET, 0.5 * quantity for HALF_SHEET
 
   officialUnitPrice: number;
   appliedUnitPrice: number;

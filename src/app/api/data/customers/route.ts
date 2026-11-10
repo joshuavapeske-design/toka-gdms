@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Customer } from '@/types';
 
-// Default seed customers for development and initial field cache
+// Default seed customers for development and initial field cache only when DB unconfigured
 const DEFAULT_CUSTOMERS: Customer[] = [
   {
     id: '44444444-4444-4444-4444-444444444401',
@@ -98,30 +98,42 @@ export async function GET() {
         .eq('is_active', true)
         .order('name');
 
-      if (!error && data && data.length > 0) {
-        const formatted: Customer[] = data.map((c: any) => ({
-          id: c.id,
-          accountNumber: c.account_number,
-          name: c.name,
-          primaryPhone: c.primary_phone,
-          altPhone: c.alt_phone,
-          deliveryArea: c.delivery_area,
-          defaultGpsLat: c.default_gps_lat ? parseFloat(c.default_gps_lat) : null,
-          defaultGpsLng: c.default_gps_lng ? parseFloat(c.default_gps_lng) : null,
-          isCreditEligible: c.is_credit_eligible,
-          creditLimit: parseFloat(c.credit_limit),
-          isActive: c.is_active,
-          createdBy: c.created_by,
-          createdAt: c.created_at,
-          updatedAt: c.updated_at,
-        }));
-        return NextResponse.json({ success: true, data: formatted });
+      if (error) {
+        console.error('[CUSTOMERS API ERROR]', error);
+        return NextResponse.json(
+          { success: false, error: `Database error: ${error.message}` },
+          { status: 500 }
+        );
       }
+
+      const formatted: Customer[] = (data || []).map((c: any) => ({
+        id: c.id,
+        accountNumber: c.account_number,
+        name: c.name,
+        primaryPhone: c.primary_phone,
+        altPhone: c.alt_phone,
+        deliveryArea: c.delivery_area,
+        defaultGpsLat: c.default_gps_lat ? parseFloat(c.default_gps_lat) : null,
+        defaultGpsLng: c.default_gps_lng ? parseFloat(c.default_gps_lng) : null,
+        isCreditEligible: c.is_credit_eligible,
+        creditLimit: parseFloat(c.credit_limit || '0'),
+        currentBalance: 0.0,
+        isActive: c.is_active,
+        createdBy: c.created_by,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      }));
+
+      return NextResponse.json({ success: true, data: formatted });
     }
 
+    // In local sandbox where Supabase is not configured
     return NextResponse.json({ success: true, data: DEFAULT_CUSTOMERS });
   } catch (err: any) {
-    return NextResponse.json({ success: true, data: DEFAULT_CUSTOMERS });
+    console.error('[CUSTOMERS API EXCEPTION]', err);
+    return NextResponse.json(
+      { success: false, error: err.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
-
