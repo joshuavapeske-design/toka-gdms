@@ -1,5 +1,5 @@
 // TOKA GDMS — Africa's Talking SMS Gateway Integration
-import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
+import { isExplicitDemoMode, isSupabaseConfigured } from '../runtime';
 
 export interface SendSmsParams {
   to: string;
