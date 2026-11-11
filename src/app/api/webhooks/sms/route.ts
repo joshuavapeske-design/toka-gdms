@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       const secretHeader =
         request.headers.get('x-webhook-secret') ||
         request.headers.get('x-api-key') ||
-        request.headers.get('authorization')?.replace('Bearer ', '');
+        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;
 
       if (!secretMatches(secretHeader, configuredSecret)) {
         console.warn('[SMS WEBHOOK] Unauthorized webhook attempt: secret mismatch.');
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     console.log(`[INBOUND SMS] From: ${from} | Provider ID: ${messageId} | Body: "${text}"`);
 
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const isConfigured = isSupabaseConfigured() && Boolean(serviceKey) && !serviceKey.includes('placeholder');
+    const isConfigured = isSupabaseConfigured() && typeof serviceKey === 'string' && !serviceKey.includes('placeholder');
     if (!isConfigured) {
       if (isExplicitDemoMode()) return NextResponse.json({ success: true, simulated: true });
       return NextResponse.json({ success: false, error: 'SMS processing infrastructure is not configured.' }, { status: 503 });
