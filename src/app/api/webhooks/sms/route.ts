@@ -26,10 +26,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'A non-placeholder webhook secret of at least 32 characters is required.' }, { status: 500 });
     }
     if (validConfiguredSecret && configuredSecret) {
-      const secretHeader =
+      const secretHeader = (
         request.headers.get('x-webhook-secret') ||
         request.headers.get('x-api-key') ||
-        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null;
+        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+      ) ?? null;
 
       if (!secretMatches(secretHeader, configuredSecret)) {
         console.warn('[SMS WEBHOOK] Unauthorized webhook attempt: secret mismatch.');
