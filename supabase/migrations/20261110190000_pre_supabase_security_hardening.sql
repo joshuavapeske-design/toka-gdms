@@ -723,7 +723,7 @@ BEGIN
        OR v_assignment.shift_date <> timezone('Africa/Nairobi', v_effective_delivery_time)::date
        OR v_assignment.started_at > v_effective_delivery_time
        OR (v_assignment.ended_at IS NOT NULL AND v_assignment.ended_at <= v_effective_delivery_time) THEN
-        RAISE EXCEPTION 'SHIFT_OUTSIDE_CAPTURE_WINDOW: Delivery capture timestamp is outside the assigned shift window', p_vehicle_assignment_id;
+        RAISE EXCEPTION 'SHIFT_OUTSIDE_CAPTURE_WINDOW: Delivery capture timestamp is outside the assigned shift window for assignment %', p_vehicle_assignment_id;
     END IF;
 
     IF v_assignment.vehicle_status != 'active' OR NOT v_assignment.vehicle_active THEN
