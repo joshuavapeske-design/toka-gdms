@@ -115,7 +115,23 @@ async function runDatabaseTests() {
           AND policyname = 'inventory_balances_select_authenticated'
           AND 'authenticated' = ANY(roles)
           AND qual ILIKE '%auth.get_user_role%'
-      ) AS inventory_policy_role_scoped
+      ) AS inventory_policy_role_scoped,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'vehicles' AND policyname = 'vehicles_modify'
+      ) AS vehicle_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'routes' AND policyname = 'routes_modify'
+      ) AS route_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'vehicle_assignments' AND policyname = 'assignments_modify'
+      ) AS shift_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'stock_locations' AND policyname = 'stock_locations_modify'
+      ) AS stock_locations_rpc_only
   `);
   const readPolicies = readPolicyChecks.rows[0];
   assert(readPolicies.anon_customers === false, 'Anonymous users have no direct SELECT grant on customer records');
@@ -124,6 +140,10 @@ async function runDatabaseTests() {
   assert(readPolicies.anon_deliveries === false, 'Anonymous users have no direct SELECT grant on delivery records');
   assert(readPolicies.customer_policy_role_scoped === true, 'Customer reads require an authenticated employee role');
   assert(readPolicies.inventory_policy_role_scoped === true, 'Inventory reads require an authorized employee role');
+  assert(readPolicies.vehicle_writes_rpc_only === true, 'Vehicle writes are routed through the audited fleet procedure');
+  assert(readPolicies.route_writes_rpc_only === true, 'Route writes are routed through the audited fleet procedure');
+  assert(readPolicies.shift_writes_rpc_only === true, 'Vehicle shift writes are routed through the audited fleet procedure');
+  assert(readPolicies.stock_locations_rpc_only === true, 'Stock location writes are routed through controlled procedures');
 
   // Verify inventory_balances table exists
   const tableCheck = await db.query<any>(`
