@@ -91,7 +91,7 @@ async function runDatabaseTests() {
 
   const businessTimezoneChecks = await db.query<any>(`
     SELECT
-      (proconfig @> ARRAY['TimeZone=Africa/Nairobi']) AS is_nairobi
+      EXISTS (SELECT 1 FROM unnest(proconfig) AS setting WHERE setting ILIKE 'timezone=africa/nairobi') AS is_nairobi
     FROM pg_proc
     WHERE proname = 'submit_delivery_atomic'
     LIMIT 1
@@ -99,7 +99,7 @@ async function runDatabaseTests() {
   assert(businessTimezoneChecks.rows[0]?.is_nairobi === true, 'Delivery transaction uses Nairobi business timezone');
 
   const collectionTimezoneChecks = await db.query<any>(`
-    SELECT (proconfig @> ARRAY['TimeZone=Africa/Nairobi']) AS is_nairobi
+    SELECT EXISTS (SELECT 1 FROM unnest(proconfig) AS setting WHERE setting ILIKE 'timezone=africa/nairobi') AS is_nairobi
     FROM pg_proc
     WHERE proname = 'record_customer_collection'
     LIMIT 1
