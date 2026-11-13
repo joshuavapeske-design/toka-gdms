@@ -10,7 +10,7 @@ The current `package.json` defines these scripts:
 | `corepack pnpm run typecheck` | `tsc --noEmit` against the project TypeScript configuration. |
 | `corepack pnpm run build` | Next.js production build. |
 
-The database suite uses **PGlite**, a PostgreSQL-compatible WASM test engine. It applies the repository migrations—including the fleet and stock-movement hardening migrations—and exercises database functions, constraints, grants and selected policy/role behavior.
+The database suite uses **PGlite**, a PostgreSQL-compatible WASM test engine. It applies the repository migrations—including fleet, stock-movement and Nairobi business-date hardening—and exercises database functions, constraints, grants and selected policy/role behavior.
 
 The current project scripts do **not** run Vitest, pgTAP, Playwright, Android instrumentation, or a real Supabase integration suite. Do not describe those as completed automated checks unless they are added and executed.
 
