@@ -35,7 +35,12 @@ export async function syncPendingDeliveries(): Promise<SyncResult> {
 
       const data = await response.json();
 
-      if (response.ok && data.success) {
+      if (response.ok && data.success && data.simulated) {
+        const message = 'Demo simulation only: this delivery was not persisted to the business database.';
+        await updateDeliverySyncStatus(delivery.clientTxId, 'local_saved', message);
+        result.failureCount++;
+        result.errors.push({ clientTxId: delivery.clientTxId, error: message });
+      } else if (response.ok && data.success) {
         await updateDeliverySyncStatus(delivery.clientTxId, 'synced');
         result.successCount++;
       } else {
