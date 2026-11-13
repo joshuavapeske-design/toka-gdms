@@ -139,6 +139,15 @@ export async function POST(request: Request) {
 
     const payload = parseResult.data;
 
+    // Offline reconciliation must retain the original device capture timestamp.
+    // Never substitute the time of reconnection for a missing capture timestamp.
+    if (payload.isOfflineSubmission && !payload.deviceCapturedAt) {
+      return NextResponse.json(
+        { success: false, code: 'OFFLINE_CAPTURE_TIMESTAMP_REQUIRED', error: 'Offline deliveries must include their original device capture timestamp.' },
+        { status: 422 }
+      );
+    }
+
     // ── 2. Server-side Financial Calculations (Decimal.js) ────────────────
     const calculatedItems: DeliveryItem[] = payload.items.map((item) => {
       const fse = calculateFse(item.sellingUnit, item.quantity);
