@@ -126,7 +126,7 @@ export default function DashboardPage() {
             <StatCard title="Outstanding Credit" value={formatKES(stats.outstandingCredit)} subtitle="Customer receivables" icon={DollarSign} href="/collections" accent={stats.outstandingCredit > 0 ? 'amber' : 'slate'} />
             <StatCard title="Low Stock Alerts" value={stats.lowStockAlerts === null ? 'Not set' : stats.lowStockAlerts} subtitle="Configure stock thresholds to enable" icon={Package} href="/inventory" accent="slate" />
             <StatCard title="Pending Sync" value={pendingSync} subtitle="Saved in this browser" icon={Clock} accent={pendingSync > 0 ? 'amber' : 'slate'} />
-            <StatCard title="Active Vehicles" value={stats.activeVehicles} subtitle="Active shifts today" icon={Layers} accent="purple" />
+            <StatCard title="Active Shifts" value={stats.activeVehicles} subtitle="Vehicle assignments active today" icon={Layers} accent="purple" />
             <StatCard title="Customers" value={stats.totalCustomers} subtitle="Active accounts" icon={Users} href="/customers" accent="blue" />
           </div>
           <div className={`rounded-xl border p-4 ${simulated ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
