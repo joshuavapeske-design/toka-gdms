@@ -91,8 +91,11 @@ export default function CollectionsPage() {
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
-        setStatusMessage({ success: true, text: `Collection ${data.collection_reference} recorded successfully.` });
+      if (res.ok && data.success && data.simulated) {
+        setStatusMessage({ success: true, text: 'DEMO ONLY: the collection response was simulated. No money receipt or collection record was saved to the business database.' });
+        setShowRecordModal(false);
+      } else if (res.ok && data.success) {
+        setStatusMessage({ success: true, text: `Collection ${data.collection_reference || data.collectionReference || 'record'} recorded successfully.` });
         setShowRecordModal(false);
         setAmount('');
         setExternalRef('');
@@ -127,8 +130,11 @@ export default function CollectionsPage() {
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
-        setStatusMessage({ success: true, text: `Allocated ${formatKES(data.allocated_amount)} to invoice.` });
+      if (res.ok && data.success && data.simulated) {
+        setStatusMessage({ success: true, text: 'DEMO ONLY: allocation was simulated. No collection, invoice balance or customer credit account was changed.' });
+        setShowAllocateModal(false);
+      } else if (res.ok && data.success) {
+        setStatusMessage({ success: true, text: `Allocated ${formatKES(data.allocated_amount ?? data.allocatedAmount)} to invoice.` });
         setShowAllocateModal(false);
         setAllocationDeliveryId('');
         setAllocationAmount('');
