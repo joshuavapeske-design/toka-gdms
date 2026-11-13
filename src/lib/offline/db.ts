@@ -125,6 +125,24 @@ export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
   return db.getAllFromIndex('outbox', 'by-status', 'pending');
 }
 
+export async function getOfflineOutboxStatusCounts(): Promise<{
+  pending: number;
+  needsReview: number;
+  localSaved: number;
+}> {
+  const db = await getOfflineDb();
+  const records = await db.getAll('outbox');
+  return records.reduce(
+    (counts, record) => {
+      if (record.syncStatus === 'pending' || record.syncStatus === 'syncing') counts.pending++;
+      if (record.syncStatus === 'needs_review' || record.syncStatus === 'failed') counts.needsReview++;
+      if (record.syncStatus === 'local_saved') counts.localSaved++;
+      return counts;
+    },
+    { pending: 0, needsReview: 0, localSaved: 0 }
+  );
+}
+
 /**
  * Updates synchronization status of a queued delivery
  */
