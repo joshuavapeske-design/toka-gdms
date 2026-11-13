@@ -2,6 +2,13 @@
 -- Owners/managers can create vehicles, routes, truck stock locations and daily crew assignments.
 BEGIN;
 
+-- Fleet and stock-location writes must pass through the transaction-safe
+-- procedures in this migration; direct table writes bypass overlap checks/audit.
+DROP POLICY IF EXISTS "vehicles_modify" ON vehicles;
+DROP POLICY IF EXISTS "routes_modify" ON routes;
+DROP POLICY IF EXISTS "assignments_modify" ON vehicle_assignments;
+DROP POLICY IF EXISTS "stock_locations_modify" ON stock_locations;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicle_assignment_active_vehicle_day
   ON vehicle_assignments(vehicle_id, shift_date)
   WHERE is_active = true;
