@@ -65,7 +65,7 @@ BEGIN
   END IF;
 
   PERFORM pg_advisory_xact_lock(hashtextextended('toka:vehicle-registration:' || v_plate, 0));
-  SELECT id, is_active, status INTO v_vehicle_id
+  SELECT id INTO v_vehicle_id
   FROM vehicles
   WHERE registration_plate = v_plate
   FOR UPDATE;
