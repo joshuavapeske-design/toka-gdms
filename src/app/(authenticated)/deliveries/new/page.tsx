@@ -192,9 +192,10 @@ export default function NewDeliveryPage() {
                 ? product.standardFullSheetPrice
                 : product.standardHalfSheetPrice;
             updated.officialUnitPrice = officialPrice;
-            if (!updated.isSpecialPrice) {
-              updated.appliedUnitPrice = officialPrice;
-            }
+            // Switching product or selling unit must not carry a special price
+            // from the previous item into a different glass specification.
+            updated.appliedUnitPrice = officialPrice;
+            updated.isSpecialPrice = false;
           }
         }
 
