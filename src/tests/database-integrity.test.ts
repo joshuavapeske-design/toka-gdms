@@ -96,6 +96,8 @@ async function runDatabaseTests() {
 
   const readPolicyChecks = await db.query<any>(`
     SELECT
+      has_table_privilege('anon', 'public.profiles', 'SELECT') AS anon_profiles,
+      has_table_privilege('authenticated', 'public.profiles', 'SELECT') AS authenticated_profiles,
       has_table_privilege('anon', 'public.customers', 'SELECT') AS anon_customers,
       has_table_privilege('anon', 'public.customer_contacts', 'SELECT') AS anon_contacts,
       has_table_privilege('anon', 'public.inventory_balances', 'SELECT') AS anon_inventory,
@@ -134,6 +136,8 @@ async function runDatabaseTests() {
       ) AS stock_locations_rpc_only
   `);
   const readPolicies = readPolicyChecks.rows[0];
+  assert(readPolicies.anon_profiles === false, 'Anonymous users have no direct SELECT grant on employee profiles');
+  assert(readPolicies.authenticated_profiles === true, 'Authenticated employees can resolve their own profile subject to RLS');
   assert(readPolicies.anon_customers === false, 'Anonymous users have no direct SELECT grant on customer records');
   assert(readPolicies.anon_contacts === false, 'Anonymous users have no direct SELECT grant on customer contact records');
   assert(readPolicies.anon_inventory === false, 'Anonymous users have no direct SELECT grant on inventory balances');
