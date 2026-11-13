@@ -145,6 +145,38 @@ async function runDatabaseTests() {
   assert(readPolicies.shift_writes_rpc_only === true, 'Vehicle shift writes are routed through the audited fleet procedure');
   assert(readPolicies.stock_locations_rpc_only === true, 'Stock location writes are routed through controlled procedures');
 
+  const sensitiveReadPolicies = await db.query<any>(`
+    SELECT
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'payment_allocations'
+          AND policyname = 'allocations_select_scoped'
+          AND qual ILIKE '%collections%'
+      ) AS allocation_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'customer_confirmation_events'
+          AND policyname = 'confirmation_events_select_scoped'
+          AND qual ILIKE '%vehicle_assignments%'
+      ) AS confirmation_events_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'customer_disputes'
+          AND policyname = 'disputes_select_roles'
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS disputes_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'credit_accounts'
+          AND policyname = 'credit_accounts_select_roles'
+          AND qual ILIKE '%cash_collector%'
+      ) AS credit_policy_scoped
+  `);
+  assert(sensitiveReadPolicies.rows[0].allocation_policy_scoped === true, 'Payment allocation reads are limited to finance roles or the collection owner');
+  assert(sensitiveReadPolicies.rows[0].confirmation_events_policy_scoped === true, 'Customer confirmation events are limited to admins and the delivery team');
+  assert(sensitiveReadPolicies.rows[0].disputes_policy_scoped === true, 'Customer dispute records are limited to management and accounting');
+  assert(sensitiveReadPolicies.rows[0].credit_policy_scoped === true, 'Customer credit ledger reads are limited to relevant internal roles');
+
   // Verify inventory_balances table exists
   const tableCheck = await db.query<any>(`
     SELECT table_name FROM information_schema.tables 
@@ -225,6 +257,26 @@ async function runDatabaseTests() {
       await db.exec(`SET request.jwt.claim.sub = '';`);
     }
   };
+
+  // Exercise the policies as the actual Supabase database roles, not only as the
+  // migration owner. This validates role-granted table access plus RLS filtering.
+  await db.exec('SET ROLE anon');
+  await assertRejects(
+    db.query<any>(`SELECT id FROM customers LIMIT 1;`),
+    'permission denied',
+    'Anonymous database role cannot read customer records'
+  );
+  await db.exec('RESET ROLE');
+
+  await setAuthUser(salesId);
+  await db.exec('SET ROLE authenticated');
+  const authenticatedCustomerRead = await db.query<any>(`SELECT id FROM customers;`);
+  assert(authenticatedCustomerRead.rows.length > 0, 'Authorized salesperson can read customer directory records');
+
+  const salespersonDisputeRead = await db.query<any>(`SELECT id FROM customer_disputes;`);
+  assert(salespersonDisputeRead.rows.length === 0, 'Salesperson cannot read management dispute records');
+  await db.exec('RESET ROLE');
+  await setAuthUser(null);
 
   const fleetGrantChecks = await db.query<any>(`
     SELECT
