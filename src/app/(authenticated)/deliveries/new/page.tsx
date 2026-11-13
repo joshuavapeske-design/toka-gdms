@@ -77,67 +77,103 @@ export default function NewDeliveryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // ─── Load cached data (from IndexedDB or API) ───────────────────────
+  // ─── Load cached data (IndexedDB is optional; online APIs remain primary) ───
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
+      let db: Awaited<ReturnType<typeof getOfflineDb>> | null = null;
+
+      // Read local caches when available, but do not block online loading if
+      // IndexedDB is disabled, unavailable or fails to open.
       try {
-        const db = await getOfflineDb();
+        db = await getOfflineDb();
         const [cachedCustomers, cachedProducts, cachedShift] = await Promise.all([
           db.getAll('cachedCustomers'),
           db.getAll('cachedProducts'),
           db.get('activeShift', 'current'),
         ]);
 
-        if (cachedCustomers.length > 0) setCustomers(cachedCustomers);
-        if (cachedProducts.length > 0) setProducts(cachedProducts);
-        if (cachedShift) setActiveAssignment(cachedShift);
-
-        // If online, fetch from APIs
-        if (navigator.onLine) {
-          try {
-            const [custRes, prodRes, assignRes] = await Promise.all([
-              fetch('/api/data/customers'),
-              fetch('/api/data/products'),
-              fetch('/api/data/assignments'),
-            ]);
-
-            if (custRes.ok) {
-              const custData = await custRes.json();
-              if (custData.data) {
-                setCustomers(custData.data);
-                const tx = db.transaction('cachedCustomers', 'readwrite');
-                for (const c of custData.data) await tx.store.put(c);
-                await tx.done;
-              }
-            }
-            if (prodRes.ok) {
-              const prodData = await prodRes.json();
-              if (prodData.data) {
-                setProducts(prodData.data);
-                const tx = db.transaction('cachedProducts', 'readwrite');
-                for (const p of prodData.data) await tx.store.put(p);
-                await tx.done;
-              }
-            }
-            if (assignRes.ok) {
-              const assignData = await assignRes.json();
-              if (assignData.data) {
-                setActiveAssignment(assignData.data);
-                await db.put('activeShift', assignData.data, 'current');
-              }
-            }
-          } catch {
-            // Proceed with cached data
-          }
+        if (!cancelled) {
+          if (cachedCustomers.length > 0) setCustomers(cachedCustomers);
+          if (cachedProducts.length > 0) setProducts(cachedProducts);
+          if (cachedShift) setActiveAssignment(cachedShift);
         }
       } catch {
-        // IndexedDB unavailable
-      } finally {
-        setLoadingData(false);
+        db = null;
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const [custRes, prodRes, assignRes] = await Promise.all([
+            fetch('/api/data/customers', { cache: 'no-store' }),
+            fetch('/api/data/products', { cache: 'no-store' }),
+            fetch('/api/data/assignments', { cache: 'no-store' }),
+          ]);
+
+          if (cancelled) return;
+
+          if (custRes.ok) {
+            const custData = await custRes.json();
+            if (custData.success && Array.isArray(custData.data)) {
+              setCustomers(custData.data);
+              if (db) {
+                try {
+                  const tx = db.transaction('cachedCustomers', 'readwrite');
+                  for (const customer of custData.data) tx.store.put(customer);
+                  await tx.done;
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Customer list loaded but could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+
+          if (prodRes.ok) {
+            const prodData = await prodRes.json();
+            if (prodData.success && Array.isArray(prodData.data)) {
+              setProducts(prodData.data);
+              if (db) {
+                try {
+                  const tx = db.transaction('cachedProducts', 'readwrite');
+                  for (const product of prodData.data) tx.store.put(product);
+                  await tx.done;
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Product list loaded but could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+
+          if (assignRes.ok) {
+            const assignData = await assignRes.json();
+            if (assignData.success) {
+              // A confirmed null response means no active shift exists. Remove any
+              // stale browser cache instead of silently using yesterday's assignment.
+              setActiveAssignment(assignData.data || null);
+              if (db) {
+                try {
+                  if (assignData.data) await db.put('activeShift', assignData.data, 'current');
+                  else await db.delete('activeShift', 'current');
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Active shift could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('[GDMS DATA] Online catalog refresh failed; any available local cache remains in use:', error);
+        }
       }
     }
 
-    loadData();
+    void loadData().finally(() => {
+      if (!cancelled) setLoadingData(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ─── GPS capture ─────────────────────────────────────────────────────
