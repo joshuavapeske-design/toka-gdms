@@ -32,7 +32,7 @@ export default async function DeliveryDetailPage({ params }: DeliveryDetailPageP
         .select(`
           *,
           customers (*),
-          profiles:created_by (full_name, phone_number),
+          profiles:profiles!deliveries_created_by_fkey (full_name, phone_number),
           delivery_items (*, products (*)),
           payment_declarations (*),
           customer_confirmations (*),
