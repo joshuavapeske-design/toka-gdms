@@ -1999,6 +1999,7 @@ DROP POLICY IF EXISTS collections_update ON collections;
 --     catalogue, customer, fleet and inventory reads.
 -- ---------------------------------------------------------------------------
 REVOKE ALL ON TABLE
+  profiles,
   customers,
   customer_contacts,
   products,
@@ -2035,6 +2036,7 @@ FROM PUBLIC, anon;
 -- project-wide default grants. Row-level policies above still determine each row.
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT ON TABLE
+  profiles,
   customers,
   customer_contacts,
   products,
