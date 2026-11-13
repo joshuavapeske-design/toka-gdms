@@ -30,7 +30,7 @@ const stockActionSchema = z.object({
 async function getAuthenticatedOperator() {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ success: false, error: 'Authentication required.' }, { status: 401 }) };
+  if (!user) return { ok: false as const, response: NextResponse.json({ success: false, error: 'Authentication required.' }, { status: 401 }) };
 
   const { data: profile, error } = await supabase
     .from('profiles')
@@ -39,12 +39,12 @@ async function getAuthenticatedOperator() {
     .single();
 
   if (error || !profile?.is_active) {
-    return { error: NextResponse.json({ success: false, error: 'Active employee profile required.' }, { status: 403 }) };
+    return { ok: false as const, response: NextResponse.json({ success: false, error: 'Active employee profile required.' }, { status: 403 }) };
   }
   if (!['owner', 'manager'].includes(profile.role)) {
-    return { error: NextResponse.json({ success: false, error: 'Only owners and managers can receive or dispatch stock.' }, { status: 403 }) };
+    return { ok: false as const, response: NextResponse.json({ success: false, error: 'Only owners and managers can receive or dispatch stock.' }, { status: 403 }) };
   }
-  return { supabase, user };
+  return { ok: true as const, supabase, user };
 }
 
 export async function GET() {
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
     }
 
     const operator = await getAuthenticatedOperator();
-    if (operator.error) return operator.error;
+    if (!operator.ok) return operator.response;
     const { supabase } = operator;
     const action = parsed.data;
 
