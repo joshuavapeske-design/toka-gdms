@@ -45,9 +45,12 @@ export async function syncPendingDeliveries(): Promise<SyncResult> {
         result.successCount++;
       } else {
         const errorMsg = data.error || `Sync failed with HTTP ${response.status}`;
-        await updateDeliverySyncStatus(delivery.clientTxId, 'failed', errorMsg);
+        const needsReview =
+          response.status === 409 ||
+          /INSUFFICIENT_STOCK|INVALID_ASSIGNMENT|INACTIVE_ASSIGNMENT|UNAUTHORIZED_SHIFT|CREDIT_NOT_AUTHORIZED|CREDIT_LIMIT_EXCEEDED|UNAUTHORIZED_PRICE|DISCOUNT_NOT_AUTHORIZED|VEHICLE_STOCK_LOCATION_NOT_FOUND|CUSTOMER_NOT_FOUND|PRODUCT_NOT_FOUND/i.test(errorMsg);
+        await updateDeliverySyncStatus(delivery.clientTxId, needsReview ? 'needs_review' : 'failed', errorMsg);
         result.failureCount++;
-        result.errors.push({ clientTxId: delivery.clientTxId, error: errorMsg });
+        result.errors.push({ clientTxId: delivery.clientTxId, error: needsReview ? `Needs review: ${errorMsg}` : errorMsg });
       }
     } catch (err: any) {
       const errorMsg = err.message || 'Network request failed';
