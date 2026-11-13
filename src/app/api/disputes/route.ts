@@ -33,7 +33,7 @@ export async function GET() {
         created_at,
         deliveries (delivery_reference, total_amount),
         customers (name, primary_phone),
-        investigator:investigated_by (full_name)
+        investigator:profiles!customer_disputes_investigated_by_fkey (full_name)
       `)
       .order('created_at', { ascending: false });
 
