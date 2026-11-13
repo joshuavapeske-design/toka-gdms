@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { formatKES } from '@/lib/decimal';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { isSupabaseConfigured } from '@/lib/runtime';
 
 interface DeliveryDetailPageProps {
   params: Promise<{ id: string }>;
@@ -21,10 +22,9 @@ interface DeliveryDetailPageProps {
 export default async function DeliveryDetailPage({ params }: DeliveryDetailPageProps) {
   const { id } = await params;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   let delivery: any = null;
 
-  if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+  if (isSupabaseConfigured()) {
     try {
       const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase
