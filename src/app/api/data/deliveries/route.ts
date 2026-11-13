@@ -32,7 +32,7 @@ export async function GET() {
         outstanding_balance,
         created_at,
         customers (name),
-        profiles:created_by (full_name)
+        profiles:profiles!deliveries_created_by_fkey (full_name)
       `)
       .order('created_at', { ascending: false })
       .limit(250);
