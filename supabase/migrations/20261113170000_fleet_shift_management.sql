@@ -237,4 +237,14 @@ GRANT EXECUTE ON FUNCTION create_vehicle_shift_assignment(TEXT, TEXT, NUMERIC, T
 REVOKE ALL ON FUNCTION close_vehicle_shift(UUID, TIMESTAMPTZ) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION close_vehicle_shift(UUID, TIMESTAMPTZ) TO authenticated;
 
+-- Customer creation is an owner/manager operation and must attribute the caller.
+DROP POLICY IF EXISTS "customers_insert_policy" ON customers;
+CREATE POLICY customers_insert_policy ON customers
+FOR INSERT TO authenticated
+WITH CHECK (
+  auth.get_user_role() IN ('owner', 'manager')
+  AND created_by = auth.uid()
+);
+GRANT INSERT ON TABLE customers TO authenticated;
+
 COMMIT;
