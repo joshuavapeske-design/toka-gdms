@@ -68,7 +68,10 @@ export default function DisputesPage() {
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.simulated) {
+        setStatusMessage({ success: true, text: 'DEMO ONLY: dispute resolution was simulated. No dispute record was changed in the business database.' });
+        setShowResolveModal(false);
+      } else if (res.ok && data.success) {
         setStatusMessage({ success: true, text: `Dispute for ${selectedDispute.deliveryReference} resolved successfully.` });
         setShowResolveModal(false);
         setResolutionNotes('');
