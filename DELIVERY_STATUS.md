@@ -1,47 +1,62 @@
-# TOKA GDMS — Delivery Status & MVP Verification Tracker
+# TOKA GDMS — Current Branch Readiness Tracker
 
-**Date:** 10 November 2026  
-**Objective:** Functional, Secure, Tested TOKA Glass Distribution Management System (GDMS) MVP.
-**Target Repository:** `https://github.com/joshuavapeske-design/toka-gdms` (Branch: `main`)
+**Last reviewed:** 13 November 2026  
+**Repository:** `joshuavapeske-design/toka-gdms`  
+**Current implementation branch:** `fix/pre-supabase-security-hardening`  
+**Protected baseline:** `main` (must remain unchanged until the implementation branch is verified)  
+**Pull request:** [#1 — Security hardening before Supabase staging](https://github.com/joshuavapeske-design/toka-gdms/pull/1)
 
----
+> **Release status: NOT YET VERIFIED — DO NOT MERGE OR DEPLOY TO PRODUCTION.**  
+> The improvements below have been committed to the implementation branch, but the latest branch has not yet completed a fresh `pnpm test`, TypeScript check, production build, and isolated Supabase staging test. Previous test results apply to an earlier commit and are not proof that this branch currently passes.
 
-## 1. Master Progress Tracker
+## 1. Current implementation inventory
 
-| Area | Status | Evidence |
-|---|:---:|---|
-| **Documentation Alignment (Full/Half Sheet Rules)** | TESTED | Updated docs (`PRODUCT_SCOPE.md`, `BUSINESS_WORKFLOWS.md`, `DATABASE_SCHEMA.md`, `OFFLINE_SYNC.md`, `SECURITY.md`, `TESTING.md`). Obsolete piece sales rules and arbitrary cuts completely removed. |
-| **Database Migrations** | TESTED | `20261109000000_initial_schema.sql` (27 tables, 12 enums, 11 immutability triggers, seed glass catalog) & `20261110000000_rls_policies_and_atomic_rpc.sql` (RLS policies across 27 tables, `protect_profile_privileges`, `protect_delivery_immutability`, and atomic RPC). |
-| **Atomic Delivery Procedure (`submit_delivery_atomic`)** | TESTED | `SECURITY DEFINER` function with `search_path = public, pg_temp`. Enforces caller authentication (`p_created_by = auth.uid()`), active vehicle assignment shift check, canonical payload hash idempotency, stock availability, physical half-sheet transformation, and line-item/payment persistence. Revoked from `PUBLIC`. |
-| **Zero-Fallback Sync Pipeline** | TESTED | `src/app/api/sync/deliveries/route.ts` eliminated all separate fallback insert paths. Single atomic commit or clean transactional rollback. Computes canonical SHA-256 payload hash and formats SMS with exact payment breakdown. |
-| **Authentication & App Shell** | TESTED | Next.js 15 App Router `src/middleware.ts`, `src/lib/auth.ts`, `src/components/AuthProvider.tsx`, `src/components/AppShell.tsx`, `src/app/login/page.tsx` with `<Suspense>` boundary. |
-| **Role Permissions & RBAC** | TESTED | 6 roles (`owner`, `manager`, `salesperson`, `driver`, `cash_collector`, `accountant`) enforced via kernel RLS policies, trigger-level anti-privilege escalation, and anti-self-approval constraints (`requested_by != reviewed_by`). |
-| **Products & Pricing** | TESTED | `src/app/api/data/products/route.ts` with 6 architectural glass catalog items (clear, tinted, mirrors) with full-sheet and half-sheet standard pricing only. Clean error handling (no masked fake data). |
-| **Customers & Directory** | TESTED | `src/app/api/data/customers/route.ts` and `src/app/(authenticated)/customers/page.tsx` with credit limits, customer balances, delivery areas, and search. Real database errors return HTTP 500 without silently falling back to mock UUIDs. |
-| **Full/Half-Sheet Inventory (FSE)** | TESTED | `src/lib/decimal.ts` (`calculateFse`, `calculateStockFse`), `src/app/(authenticated)/inventory/page.tsx`. 100% test pass on 20 -> 16 full + 1 half = 16.5 FSE transformation. |
-| **Credit Accounting & Invariants** | TESTED | Outstanding balance strictly calculated as `totalInvoice - declaredMoneyReceived`. Credit is recognized as debt/receivable, never as money received. Excess collections isolated as unallocated credit. |
-| **Customer SMS Verification & Inbound Webhook** | TESTED | `src/lib/sms/africas-talking.ts`, `src/app/api/webhooks/sms/route.ts` using `createAdminClient()`, secret verification (`AFRICAS_TALKING_WEBHOOK_SECRET`), sender phone customer authorization verification, exact DB schema matching, and 5-category dispute questionnaire. |
-| **Disputes & Fraud Claims** | TESTED | `src/app/(authenticated)/disputes/page.tsx` and SMS webhook routing to record disputes and category clarifications (`wrong_items_or_quantities`, `incorrect_price`, `wrong_payment_declared`, `delivery_never_received`, `damaged_glass_uncredited`). |
-| **Dashboard & Reports** | TESTED | `src/app/(authenticated)/page.tsx` with revenue, deliveries, active disputes, stock alerts, and credit balances. |
-| **Offline Synchronization** | TESTED | `src/lib/offline/db.ts` (IndexedDB 5 stores), `src/lib/offline/sync.ts`, `src/app/api/sync/deliveries/route.ts` with UUIDv4 idempotency and `IDEMPOTENCY_PAYLOAD_MISMATCH` protection. |
-| **GPS Point-in-Time Capture** | IMPLEMENTED | Geolocation capture with lat, lng, and accuracy meters on delivery submission form. Hardware accuracy testing deferred to live field deployment. |
-| **Automated Test Suite** | TESTED | `pnpm test` executes `business-rules.test.ts` (33 tests), `financial-integrity.test.ts` (43 tests), and `database-integrity.test.ts` (35 tests on real PostgreSQL WASM kernel). All 111 tests passed (0 failures). |
-| **Production Build** | TESTED | `pnpm run build` completed with code 0 across all 20 routes, pages, and API endpoints. |
+| Area | Current state | Verification still required |
+|---|---|---|
+| Next.js 15 / React 19 / TypeScript / Tailwind | Implemented | Fresh typecheck and production build |
+| Supabase Auth and six employee roles | Implemented | Fresh staging users, actual sign-in and role tests |
+| Database schema and atomic delivery RPC | Implemented | Apply all migrations to a new Supabase staging database |
+| Database security hardening | Additional RLS, trigger and function-grant hardening committed | Execute database tests and verify as real Supabase roles |
+| Customer directory and creation | Owner/manager API and UI implemented | Create and read customers in staging |
+| Fleet and shift setup | Owner/manager UI and atomic RPC added | Create, close and reassign shifts in staging |
+| Warehouse receiving and vehicle dispatch | Owner/manager UI and database-enforced role/location checks added | Apply fifth migration and verify physical movement ledger/balances in staging |
+| Delivery capture and stock deduction | Implemented | Test full/half sheets, credit, payments and transaction persistence |
+| Delivery ledger and dashboard | Connected to database APIs; local outbox shown separately | Verify actual server records and totals |
+| Collections and invoice allocation | API/UI implemented; Nairobi business date applied to financial RPCs | Verify partial and multi-invoice allocation and turnover dates against staging data |
+| Disputes | SMS state machine and management UI implemented | Test with authenticated webhook and staging records |
+| Offline outbox | IndexedDB status states distinguish pending, needs-review and browser-only records | Browser offline/reconnect and stale-record acceptance tests |
+| Outbound SMS | Provider integration and protected dispatcher endpoint implemented | Provider credentials and explicit staging delivery test required |
+| Dashboard stock alerts | Not available; no thresholds configured | Must not be represented as active |
+| Special price and discount approvals | Database controls exist; complete request/review UI is not implemented | Not available for end-to-end user testing |
+| Employee onboarding/profile administration | No in-app management UI | Staging users must be created manually in Supabase Auth and `profiles` |
+| Employee turnover settlement | Not complete end-to-end | Not available for acceptance testing |
+| Payment reversals/refunds | Database table/invariants exist; complete API/UI workflow is missing | Not available for acceptance testing |
+| Stock returns, damage and authorized adjustments | Movement types exist; complete UI/API workflow is missing | Not available for acceptance testing |
+| Audit-log viewer and GPS fleet monitoring | Not complete end-to-end | Not available for acceptance testing |
+| Automatic notification scheduling | Dispatcher endpoint exists; scheduled worker is not configured | Manual/protected invocation only after explicit SMS setup |
 
-*Status Legend:* `NOT STARTED` | `IN PROGRESS` | `IMPLEMENTED` | `TESTED` | `BLOCKED`
+## 2. Current automated verification status
 
----
+The package scripts currently run:
 
-## 2. Key Architecture & Business Invariants Verified
+- `corepack pnpm test` — business rules, financial integrity and PGlite migration/database tests.
+- `corepack pnpm run typecheck` — TypeScript compiler.
+- `corepack pnpm run build` — Next.js production build.
 
-1. **Selling Model**: Full Sheet by default; Half Sheet when specifically ordered. Arbitrary piece sales completely removed across code, schema, and documentation.
-2. **Physical Transformation Model**: Splitting 1 full sheet produces 2 physical half sheets. Selling 1 leaves 1 physical half sheet in stock (recorded in `stock_transformations`).
-3. **Conservation of Mass**: Full Sheet Equivalent (FSE) = $\text{Full Sheets} + (\text{Half Sheets} \times 0.5)$.
-4. **Credit Integrity**: Credit is debt, not money received. Outstanding balance = Total Invoice - Total Declared Money Received.
-5. **No Non-Atomic Fallback Inserts**: Deliveries execute through `submit_delivery_atomic` with immediate failure upon error, preventing half-saved delivery records.
-6. **Kernel-Level Defense**:
-   - `protect_profile_privileges()` prevents privilege escalation or unauthorized account reactivation.
-   - `protect_delivery_immutability()` prevents silent modification of core financial fields.
-   - `prevent_immutable_delete()` blocks hard deletes on all 11 core financial and stock ledgers.
-7. **Canonical Idempotency**: SHA-256 payload hashing ensures that retries of identical deliveries succeed idempotently, while replaying a `client_tx_id` with altered data triggers HTTP 409 `IDEMPOTENCY_PAYLOAD_MISMATCH`.
-8. **Inbound SMS Webhook Security**: Africa's Talking inbound webhook uses server service-role client, verifies shared webhook secret, validates sender phone matches customer record, and maps responses cleanly to `customer_confirmations` and `customer_disputes`.
+**Latest branch verification: pending.** The previous user-provided test report showed failures in the business-rule test, migration test, TypeScript check and build. Fixes for those reported failures have since been committed, and additional tests were added for RLS metadata and fleet setup. Those changes have not yet been rerun locally.
+
+GitHub Actions is currently unavailable because the repository account's Actions billing is locked. Recent runs ended in `startup_failure` before jobs started; this is not a passing CI result and is not evidence of a code failure. Run the checks in Antigravity.
+
+## 3. Branch protection and release rules
+
+1. Keep `main` unchanged while the implementation branch is being tested.
+2. Make and verify fixes on `fix/pre-supabase-security-hardening`.
+3. Use a separate Supabase project and Vercel Preview environment for online testing.
+4. Do not connect production credentials, real customer data or live payment/SMS infrastructure during initial staging.
+5. Do not merge PR #1 until the tests and staging gate in [Staging Deployment](docs/STAGING_DEPLOYMENT.md) pass.
+
+## 4. Required next verification
+
+See [docs/STAGING_DEPLOYMENT.md](docs/STAGING_DEPLOYMENT.md) for the migration order, first-owner bootstrap, Preview environment variables, staging workflow and deployment gate.
+
+**A local successful build is necessary but not sufficient.** RLS, Supabase Auth, transaction locks, provider webhooks, offline synchronization and online stock operations must also be verified against the isolated staging project.

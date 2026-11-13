@@ -2,28 +2,37 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/sms/africas-talking';
+import { timingSafeEqual } from 'node:crypto';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
+
+function secretMatches(received: string | null, expected: string): boolean {
+  if (!received) return false;
+  const left = Buffer.from(received);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 export async function POST(request: Request) {
   try {
     // ── 0. Mandatory Webhook Authentication ──────────────────────────────────
     const configuredSecret = process.env.AFRICAS_TALKING_WEBHOOK_SECRET;
-    const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
-
-    if (!configuredSecret) {
-      if (!isDevOrTest) {
-        console.error('[SMS WEBHOOK] Fatal: AFRICAS_TALKING_WEBHOOK_SECRET is not configured in production.');
-        return NextResponse.json(
-          { success: false, error: 'Webhook secret is not configured' },
-          { status: 500 }
-        );
-      }
-    } else {
-      const secretHeader =
+    const demoWithoutDatabase = isExplicitDemoMode() && !isSupabaseConfigured();
+    const validConfiguredSecret = Boolean(
+      configuredSecret &&
+      configuredSecret.length >= 32 &&
+      !/^(your_|replace-|placeholder)/i.test(configuredSecret)
+    );
+    if (!validConfiguredSecret && !demoWithoutDatabase) {
+      return NextResponse.json({ success: false, error: 'A non-placeholder webhook secret of at least 32 characters is required.' }, { status: 500 });
+    }
+    if (validConfiguredSecret && configuredSecret) {
+      const secretHeader = (
         request.headers.get('x-webhook-secret') ||
         request.headers.get('x-api-key') ||
-        request.headers.get('authorization')?.replace('Bearer ', '');
+        request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+      ) ?? null;
 
-      if (secretHeader !== configuredSecret) {
+      if (!secretMatches(secretHeader, configuredSecret)) {
         console.warn('[SMS WEBHOOK] Unauthorized webhook attempt: secret mismatch.');
         return NextResponse.json({ success: false, error: 'Unauthorized webhook call' }, { status: 401 });
       }
@@ -78,13 +87,11 @@ export async function POST(request: Request) {
 
     console.log(`[INBOUND SMS] From: ${from} | Provider ID: ${messageId} | Body: "${text}"`);
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const isConfigured = supabaseUrl && !supabaseUrl.includes('placeholder') && !!serviceKey;
-
+    const isConfigured = isSupabaseConfigured() && typeof serviceKey === 'string' && !serviceKey.includes('placeholder');
     if (!isConfigured) {
-      console.log('[INBOUND SMS] Admin Supabase client not configured in environment. Simulating response.');
-      return NextResponse.json({ success: true, simulated: true });
+      if (isExplicitDemoMode()) return NextResponse.json({ success: true, simulated: true });
+      return NextResponse.json({ success: false, error: 'SMS processing infrastructure is not configured.' }, { status: 503 });
     }
 
     // Use admin client (bypasses RLS for public inbound webhook)
@@ -110,7 +117,9 @@ export async function POST(request: Request) {
     const ref = rpcResult?.delivery_reference || '';
 
     // ── 3. Send SMS Feedback According to Atomic State Transition ───────────
-    if (status === 'invalid_reference') {
+    if (status === 'ambiguous') {
+      await sendSms({ to: from, message: 'TOKA GLASS: More than one recent delivery is awaiting a reply. Please include the delivery reference from your receipt.' });
+    } else if (status === 'invalid_reference') {
       await sendSms({
         to: from,
         message: `TOKA GLASS: Delivery reference ${rpcResult?.reference || ''} was not found. Please verify the code or call 0700000000.`,

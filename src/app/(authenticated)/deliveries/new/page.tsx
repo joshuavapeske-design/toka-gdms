@@ -77,67 +77,103 @@ export default function NewDeliveryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // ─── Load cached data (from IndexedDB or API) ───────────────────────
+  // ─── Load cached data (IndexedDB is optional; online APIs remain primary) ───
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
+      let db: Awaited<ReturnType<typeof getOfflineDb>> | null = null;
+
+      // Read local caches when available, but do not block online loading if
+      // IndexedDB is disabled, unavailable or fails to open.
       try {
-        const db = await getOfflineDb();
+        db = await getOfflineDb();
         const [cachedCustomers, cachedProducts, cachedShift] = await Promise.all([
           db.getAll('cachedCustomers'),
           db.getAll('cachedProducts'),
           db.get('activeShift', 'current'),
         ]);
 
-        if (cachedCustomers.length > 0) setCustomers(cachedCustomers);
-        if (cachedProducts.length > 0) setProducts(cachedProducts);
-        if (cachedShift) setActiveAssignment(cachedShift);
-
-        // If online, fetch from APIs
-        if (navigator.onLine) {
-          try {
-            const [custRes, prodRes, assignRes] = await Promise.all([
-              fetch('/api/data/customers'),
-              fetch('/api/data/products'),
-              fetch('/api/data/assignments'),
-            ]);
-
-            if (custRes.ok) {
-              const custData = await custRes.json();
-              if (custData.data) {
-                setCustomers(custData.data);
-                const tx = db.transaction('cachedCustomers', 'readwrite');
-                for (const c of custData.data) await tx.store.put(c);
-                await tx.done;
-              }
-            }
-            if (prodRes.ok) {
-              const prodData = await prodRes.json();
-              if (prodData.data) {
-                setProducts(prodData.data);
-                const tx = db.transaction('cachedProducts', 'readwrite');
-                for (const p of prodData.data) await tx.store.put(p);
-                await tx.done;
-              }
-            }
-            if (assignRes.ok) {
-              const assignData = await assignRes.json();
-              if (assignData.data) {
-                setActiveAssignment(assignData.data);
-                await db.put('activeShift', assignData.data, 'current');
-              }
-            }
-          } catch {
-            // Proceed with cached data
-          }
+        if (!cancelled) {
+          if (cachedCustomers.length > 0) setCustomers(cachedCustomers);
+          if (cachedProducts.length > 0) setProducts(cachedProducts);
+          if (cachedShift) setActiveAssignment(cachedShift);
         }
       } catch {
-        // IndexedDB unavailable
-      } finally {
-        setLoadingData(false);
+        db = null;
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          const [custRes, prodRes, assignRes] = await Promise.all([
+            fetch('/api/data/customers', { cache: 'no-store' }),
+            fetch('/api/data/products', { cache: 'no-store' }),
+            fetch('/api/data/assignments', { cache: 'no-store' }),
+          ]);
+
+          if (cancelled) return;
+
+          if (custRes.ok) {
+            const custData = await custRes.json();
+            if (custData.success && Array.isArray(custData.data)) {
+              setCustomers(custData.data);
+              if (db) {
+                try {
+                  const tx = db.transaction('cachedCustomers', 'readwrite');
+                  for (const customer of custData.data) tx.store.put(customer);
+                  await tx.done;
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Customer list loaded but could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+
+          if (prodRes.ok) {
+            const prodData = await prodRes.json();
+            if (prodData.success && Array.isArray(prodData.data)) {
+              setProducts(prodData.data);
+              if (db) {
+                try {
+                  const tx = db.transaction('cachedProducts', 'readwrite');
+                  for (const product of prodData.data) tx.store.put(product);
+                  await tx.done;
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Product list loaded but could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+
+          if (assignRes.ok) {
+            const assignData = await assignRes.json();
+            if (assignData.success) {
+              // A confirmed null response means no active shift exists. Remove any
+              // stale browser cache instead of silently using yesterday's assignment.
+              setActiveAssignment(assignData.data || null);
+              if (db) {
+                try {
+                  if (assignData.data) await db.put('activeShift', assignData.data, 'current');
+                  else await db.delete('activeShift', 'current');
+                } catch (cacheError) {
+                  console.warn('[GDMS CACHE] Active shift could not be cached:', cacheError);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('[GDMS DATA] Online catalog refresh failed; any available local cache remains in use:', error);
+        }
       }
     }
 
-    loadData();
+    void loadData().finally(() => {
+      if (!cancelled) setLoadingData(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ─── GPS capture ─────────────────────────────────────────────────────
@@ -192,9 +228,10 @@ export default function NewDeliveryPage() {
                 ? product.standardFullSheetPrice
                 : product.standardHalfSheetPrice;
             updated.officialUnitPrice = officialPrice;
-            if (!updated.isSpecialPrice) {
-              updated.appliedUnitPrice = officialPrice;
-            }
+            // Switching product or selling unit must not carry a special price
+            // from the previous item into a different glass specification.
+            updated.appliedUnitPrice = officialPrice;
+            updated.isSpecialPrice = false;
           }
         }
 
@@ -259,11 +296,21 @@ export default function NewDeliveryPage() {
     validationErrors.push('Total payments exceed invoice amount');
   }
 
+  const explicitCreditAmount = payments.filter((payment) => payment.channel === 'credit')
+    .reduce((sum, payment) => sum + payment.declaredAmount, 0);
+  if (Math.abs(explicitCreditAmount - paymentBalances.outstandingBalance) > 0.01) {
+    validationErrors.push(`Add an explicit credit declaration equal to the remaining balance (${formatKES(paymentBalances.outstandingBalance)}), or record additional money received.`);
+  }
+
   const isValid = validationErrors.length === 0;
 
   // ─── Submit delivery ─────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!isValid || isSubmitting) return;
+    if (!activeAssignment) {
+      setSubmitResult({ success: false, message: 'No active vehicle shift is assigned. Contact a manager before recording this delivery.' });
+      return;
+    }
     setIsSubmitting(true);
     setSubmitResult(null);
 
@@ -298,7 +345,7 @@ export default function NewDeliveryPage() {
       customerId,
       customerName: selectedCustomer?.name || '',
       customerPhone: selectedCustomer?.primaryPhone || '',
-      vehicleAssignmentId: activeAssignment?.id || '55555555-5555-5555-5555-555555555501',
+      vehicleAssignmentId: activeAssignment.id,
       vehicleId: activeAssignment?.vehicleId,
       employeeId: user?.id,
       items: deliveryItems,
@@ -327,22 +374,66 @@ export default function NewDeliveryPage() {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            deliveryPayload.syncStatus = 'synced';
-            deliveryPayload.syncedAt = new Date().toISOString();
-            await queueOfflineDelivery(deliveryPayload);
-            setSubmitResult({ success: true, message: `Delivery ${deliveryReference} submitted successfully.` });
-            setTimeout(() => router.push('/deliveries'), 1500);
+          const data = await response.json().catch(() => ({}));
+          if (!data.success) {
+            setSubmitResult({ success: false, message: data.error || 'The server did not accept this delivery.' });
             return;
           }
+          if (data.simulated) {
+            deliveryPayload.syncStatus = 'local_saved';
+            try {
+              await queueOfflineDelivery(deliveryPayload);
+            } catch (storageError) {
+              console.error('[GDMS DEMO OUTBOX] Browser-only demo record could not be retained locally:', storageError);
+            }
+            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was ${'saved in this browser only'} and was NOT saved to the TOKA business database.` });
+            return;
+          }
+          deliveryPayload.syncStatus = 'synced';
+          deliveryPayload.syncedAt = new Date().toISOString();
+          try {
+            await queueOfflineDelivery(deliveryPayload);
+          } catch (storageError) {
+            // The server transaction has already committed. A local cache failure
+            // must never tell the user that the business delivery failed or invite
+            // them to submit a duplicate transaction.
+            console.warn('[GDMS DELIVERY CACHE] Delivery committed, but local history cache could not be updated:', storageError);
+          }
+          setSubmitResult({ success: true, message: `Delivery ${deliveryReference} submitted successfully.` });
+          setTimeout(() => router.push('/deliveries'), 1500);
+          return;
         } else {
-          // Explicit server rejection (HTTP 4xx/5xx) — show actual server validation error
           const errorData = await response.json().catch(() => ({}));
-          setSubmitResult({
-            success: false,
-            message: errorData.error || `Server rejected delivery (HTTP ${response.status})`,
-          });
+          const serverMessage = errorData.error || `Server returned HTTP ${response.status}`;
+          const retryable =
+            response.status === 408 ||
+            response.status === 425 ||
+            response.status === 429 ||
+            response.status >= 500;
+
+          if (retryable) {
+            // The server may have committed the transaction before the response
+            // was lost. Keep the original online payload and clientTxId unchanged;
+            // a retry must have the same canonical idempotency hash.
+            deliveryPayload.syncStatus = 'pending';
+            deliveryPayload.errorMessage = serverMessage;
+            try {
+              await queueOfflineDelivery(deliveryPayload);
+              setSubmitResult({
+                success: true,
+                message: `Delivery ${deliveryReference} has an uncertain server response. The original transaction was saved locally for safe idempotent reconciliation; do not create it again.`,
+              });
+              setTimeout(() => router.push('/deliveries'), 1500);
+            } catch (storageError: any) {
+              setSubmitResult({
+                success: false,
+                message: `The server response was uncertain and local recovery storage failed: ${storageError?.message || 'IndexedDB error'}. Do not resubmit this delivery; contact a manager to check the delivery ledger first.`,
+              });
+            }
+            return;
+          }
+
+          setSubmitResult({ success: false, message: serverMessage });
           return;
         }
       }
@@ -358,19 +449,22 @@ export default function NewDeliveryPage() {
       setTimeout(() => router.push('/deliveries'), 1500);
     } catch (err: any) {
       if (!navigator.onLine || err.name === 'TypeError') {
-        deliveryPayload.isOfflineSubmission = true;
+        // A request that times out after starting may already have reached the
+        // server. Do not flip isOfflineSubmission: preserving the exact payload
+        // ensures retries use the same clientTxId and canonical hash.
         deliveryPayload.syncStatus = 'pending';
+        deliveryPayload.errorMessage = 'Network response was interrupted; retrying the original transaction safely.';
         try {
           await queueOfflineDelivery(deliveryPayload);
           setSubmitResult({
             success: true,
-            message: `Network offline. Delivery ${deliveryReference} saved locally and queued for synchronization.`,
+            message: `Network response interrupted. Delivery ${deliveryReference} was saved locally with its original transaction identity for safe reconciliation; do not create it again.`,
           });
           setTimeout(() => router.push('/deliveries'), 1500);
         } catch (dbErr: any) {
           setSubmitResult({
             success: false,
-            message: `IndexedDB error: ${dbErr.message || 'Failed to save offline record'}`,
+            message: `The request may have reached the server, but IndexedDB recovery failed: ${dbErr.message || 'storage error'}. Do not resubmit; ask a manager to check the delivery ledger first.`,
           });
         }
       } else {
@@ -430,7 +524,7 @@ export default function NewDeliveryPage() {
           <span className="text-slate-600">
             {activeAssignment
               ? `${activeAssignment.vehicleRegistrationPlate} · ${activeAssignment.routeName || 'Assigned Route'}`
-              : 'Direct Depot Dispatch'}
+              : 'No active vehicle assignment'}
           </span>
         </div>
         {activeAssignment && (
@@ -590,24 +684,13 @@ export default function NewDeliveryPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Unit Price (KES)</label>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Catalog Unit Price (KES)</label>
                     <input
                       type="number"
-                      min={0}
-                      step={0.01}
                       value={item.appliedUnitPrice}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        updateItem(item.key, {
-                          appliedUnitPrice: val,
-                          isSpecialPrice: val !== item.officialUnitPrice,
-                        });
-                      }}
-                      className={`w-full px-2 py-1.5 text-sm border rounded-md ${
-                        item.isSpecialPrice
-                          ? 'bg-amber-50 border-amber-300 text-amber-800'
-                          : 'bg-white border-slate-200'
-                      }`}
+                      readOnly
+                      aria-readonly="true"
+                      className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md bg-slate-50 text-slate-700"
                     />
                   </div>
                   <div>
@@ -618,14 +701,9 @@ export default function NewDeliveryPage() {
                   </div>
                 </div>
 
-                {/* FSE indicator */}
+                        {/* FSE indicator */}
                 <div className="mt-1.5 text-[10px] text-slate-500">
                   FSE: {calculateFse(item.sellingUnit, item.quantity).toFixed(1)}
-                  {item.isSpecialPrice && (
-                    <span className="ml-2 text-amber-600 font-semibold">
-                      ⚠ Non-standard price (official: {formatKES(item.officialUnitPrice)})
-                    </span>
-                  )}
                 </div>
               </div>
             ))}

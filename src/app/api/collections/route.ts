@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 const createCollectionSchema = z.object({
   customerId: z.string().uuid({ message: 'Valid customerId is required' }),
@@ -13,9 +14,9 @@ const createCollectionSchema = z.object({
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, data: [] });
+    if (!isSupabaseConfigured()) {
+      if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: [], simulated: true });
+      return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -36,7 +37,7 @@ export async function GET() {
         collection_date,
         created_at,
         customers (name, account_number),
-        collector:collected_by (full_name)
+        collector:profiles!collections_collected_by_fkey (full_name)
       `)
       .order('created_at', { ascending: false });
 
@@ -82,8 +83,8 @@ export async function POST(request: Request) {
 
     const { customerId, channel, amount, externalRef, notes } = parsed.data;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+    if (!isSupabaseConfigured()) {
+      if (!isExplicitDemoMode()) return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
       return NextResponse.json({
         success: true,
         simulated: true,

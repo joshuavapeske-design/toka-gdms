@@ -1,5 +1,7 @@
 import { getAuthUser } from '@/lib/auth';
 import { AppShell } from '@/components/AppShell';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
+import { redirect } from 'next/navigation';
 
 export default async function AuthenticatedLayout({
   children,
@@ -8,7 +10,9 @@ export default async function AuthenticatedLayout({
 }) {
   const user = await getAuthUser();
 
-  // If no real Supabase, provide a demo user for development
+  const demoMode = isExplicitDemoMode() && !isSupabaseConfigured();
+  if (!user && !demoMode) redirect('/login');
+  // Demo identity is available only with explicit local-development opt-in and no database configured.
   const sessionUser = user
     ? {
         id: user.id,

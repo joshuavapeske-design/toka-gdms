@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { VehicleAssignment } from '@/types';
+import { isExplicitDemoMode, isSupabaseConfigured } from '@/lib/runtime';
 
 // Default seed assignment for offline/local simulation
 const DEFAULT_ASSIGNMENT: VehicleAssignment = {
@@ -23,8 +24,7 @@ const DEFAULT_ASSIGNMENT: VehicleAssignment = {
 
 export async function GET() {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes('placeholder')) {
+    if (isSupabaseConfigured()) {
       const supabase = await createServerSupabaseClient();
       const {
         data: { user },
@@ -34,8 +34,26 @@ export async function GET() {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
       }
 
-      // Query active assignment for this employee
-      const { data, error } = await supabase
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role,is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !profile?.is_active) {
+        return NextResponse.json({ success: false, error: 'Active employee profile required.' }, { status: 403 });
+      }
+
+      // Owners and managers may submit audited override deliveries for a team
+      // assignment. Field employees only receive their own assigned shift.
+      const isManagerOverride = profile.role === 'owner' || profile.role === 'manager';
+      if (!isManagerOverride && profile.role !== 'driver' && profile.role !== 'salesperson') {
+        return NextResponse.json({ success: true, data: null });
+      }
+
+      // Query a current active assignment for this employee, or the latest active
+      // team assignment for an authorized owner/manager.
+      let assignmentQuery = supabase
         .from('vehicle_assignments')
         .select(`
           id,
@@ -50,11 +68,19 @@ export async function GET() {
           created_at,
           vehicles (registration_plate, make_model),
           routes (name, code),
-          driver:driver_id (full_name),
-          salesperson:salesperson_id (full_name)
+          driver:profiles!vehicle_assignments_driver_id_fkey (full_name),
+          salesperson:profiles!vehicle_assignments_salesperson_id_fkey (full_name)
+          
         `)
         .eq('is_active', true)
-        .or(`driver_id.eq.${user.id},salesperson_id.eq.${user.id}`)
+        .eq('shift_date', new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date()))
+        .lte('started_at', new Date().toISOString());
+
+      if (!isManagerOverride) {
+        assignmentQuery = assignmentQuery.or(`driver_id.eq.${user.id},salesperson_id.eq.${user.id}`);
+      }
+
+      const { data, error } = await assignmentQuery
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -97,8 +123,8 @@ export async function GET() {
       return NextResponse.json({ success: true, data: null });
     }
 
-    // In local development simulation mode
-    return NextResponse.json({ success: true, data: DEFAULT_ASSIGNMENT });
+    if (isExplicitDemoMode()) return NextResponse.json({ success: true, data: DEFAULT_ASSIGNMENT, simulated: true });
+    return NextResponse.json({ success: false, error: 'Supabase is not configured; no active shift can be verified.' }, { status: 503 });
   } catch (err: any) {
     console.error('[ASSIGNMENTS API EXCEPTION]', err);
     return NextResponse.json(

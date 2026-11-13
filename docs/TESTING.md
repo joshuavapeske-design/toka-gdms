@@ -1,62 +1,94 @@
-# TOKA GDMS — Comprehensive Verification & Testing Strategy (Confirmed Rules)
+# TOKA GDMS — Current Verification Plan
 
-## 1. Testing Philosophy & Frameworks
+## 1. Automated checks actually wired into the repository
 
-GDMS enforces a rigorous test suite designed to prevent fraud, protect data integrity, and guarantee operational continuity:
-- **Unit & Arithmetic Tests**: Vitest for full/half sheet calculations, FSE derivations, Decimal.js financial operations, and SMS regex parsers.
-- **Database & RLS Tests**: Supabase local test harness (`pgTAP`) verifying PostgreSQL triggers, constraints, transformation records, and Row-Level Security policies.
-- **Integration & API Tests**: Playwright & Node.js test runner validating Server Actions, idempotent sync endpoints, and two-way SMS webhooks.
-- **Simulated Offline Tests**: Playwright browser harness simulating offline IndexedDB storage, device restart, and network reconnects.
+The current `package.json` defines these scripts:
 
----
+| Command | What it runs |
+|---|---|
+| `corepack pnpm test` | Node's TypeScript-strip runner executes `src/tests/business-rules.test.ts`, `src/tests/financial-integrity.test.ts`, and `src/tests/database-integrity.test.ts` in sequence. |
+| `corepack pnpm run typecheck` | `tsc --noEmit` against the project TypeScript configuration. |
+| `corepack pnpm run build` | Next.js production build. |
 
-## 2. Expanded Testing Matrix (15 Complex Scenarios)
+The database suite uses **PGlite**, a PostgreSQL-compatible WASM test engine. It applies the repository migrations—including fleet, stock-movement and Nairobi business-date hardening—and exercises database functions, constraints, grants and selected policy/role behavior.
 
-| # | Test Scenario | Test Method / Harness | Measurable Pass Condition |
-|---|---|---|---|
-| **1** | **Half-Sheet Transformation** | Customer orders 1 half sheet when truck only has full sheets. | Database executes atomic procedure: 1 full sheet consumed, 2 half sheets produced, 1 delivered, exactly 1 half sheet remains in truck stock. `stock_transformations` row created. |
-| **2** | **Full-Sheet Equivalent (FSE) Math** | Inventory holding 9 full sheets and 1 half sheet. | System derives $\text{FSE} = 9 + (1 \times 0.5) = 9.5\text{ FSE}$. Calculation verified with zero rounding errors. |
-| **3** | **Unallocated Collections Isolation** | Recording a KES 20,000 cash collection without specifying an invoice. | Collection logged with `unallocated_amount = 20,000.00`; customer account balance reduces; open delivery invoices are **NOT** arbitrarily altered without explicit `payment_allocations`. |
-| **4** | **Concurrent Stock Operations** | Parallel API calls deducting the same warehouse sheet stock simultaneously. | Database transaction locks prevent negative inventory; exactly one transaction succeeds while the second fails with `INSUFFICIENT_STOCK`. |
-| **5** | **Concurrent Credit Operations** | Two drivers recording credit deliveries simultaneously to a customer near their credit limit. | Atomic credit account balance check prevents over-extension; the second delivery is blocked or flagged for manager review. |
-| **6** | **Idempotency Payload Mismatch** | Submitting the same `client_tx_id` with an altered quantity or price. | Server returns `HTTP 409 Conflict` (`IDEMPOTENCY_MISMATCH`); original record remains unaltered; security alert logged. |
-| **7** | **Interrupted Synchronization** | Dropping HTTP connection mid-request during sync, then retrying with identical payload. | Server accepts retried submission without creating duplicate delivery or double-deducting inventory. |
-| **8** | **Offline Stale Data** | Syncing an offline delivery where master prices or customer credit limits changed online during the shift. | Quoted price respected within tolerance or flagged for manager sign-off; credit breach transitions delivery to `correction_pending`. |
-| **9** | **Unauthorized RPC Calls** | Calling `submit_delivery_atomic` with a forged `created_by` or unassigned vehicle. | Function verifies session JWT (`auth.uid()`) and assignment validity; execution fails with `ACCESS_DENIED`. |
-| **10**| **Profile & Role Manipulation** | Salesperson attempting `UPDATE profiles SET role = 'owner'`. | Row-Level Security and database trigger reject the update with `PERMISSION_DENIED`. |
-| **11**| **Duplicate & Delayed SMS** | Simulating carrier duplicate webhook retry, followed by a customer reply sent 5 days later. | Duplicate webhook ignored via `UNIQUE (provider_message_id)`; late reply accepted but flagged `is_late_response = true`. |
-| **12**| **Multiple Invoices Allocation** | Applying a single KES 50,000 collection across 3 open delivery invoices. | First two invoices transition to `fully_paid`; third invoice updates balance to KES 5,000; customer balance decreases by KES 50,000. |
-| **13**| **Device Loss & Logout** | Clearing user session or logging out on shared mobile device. | Active user JWT revoked; cached sensitive customer lists cleared; offline outbox securely quarantined. |
-| **14**| **Provider SMS Outage** | Simulating Africa's Talking API timeout during delivery creation. | Outbound SMS queued in `notifications` table (`status = 'queued'`); retry worker attempts delivery with exponential backoff. |
-| **15**| **Android GPS Lifecycle** | Backgrounding app on Android, locking screen, driving 5 km, and simulating location permission revocation. | Foreground service persistent notification keeps sampling breadcrumbs; permission revocation triggers instant alert to Manager. |
+The current project scripts do **not** run Vitest, pgTAP, Playwright, Android instrumentation, or a real Supabase integration suite. Do not describe those as completed automated checks unless they are added and executed.
 
----
+## 2. Fresh verification procedure
 
-## 3. Mapping of the 22 Master Acceptance Criteria
+Run these commands from the repository root on `fix/pre-supabase-security-hardening`:
 
-Each of the 22 Master Acceptance Criteria (mandated in Part 22 of the Master Prompt) is mapped to specific verification tests:
+```powershell
+git status --short
+git branch --show-current
+git pull --ff-only origin fix/pre-supabase-security-hardening
 
-| Criterion # | Master Acceptance Criterion | Verifying Test Suite | Pass Condition |
-|---|---|---|---|
-| **1** | **Create and manage employees** | `tests/rbac/profiles.test.ts` | Owner can invite, assign roles, activate, and deactivate staff. |
-| **2** | **Create and manage customers** | `tests/customers/customers.test.ts` | Customers created with contact numbers, delivery area, credit limit, and default GPS. |
-| **3** | **Manage glass products and prices** | `tests/pricing/products.test.ts` | Master products defined with full-sheet & half-sheet standard and customer rates. |
-| **4** | **Assign vehicles and routes** | `tests/fleet/assignments.test.ts` | Management creates routes and assigns drivers, salespeople, and trucks per shift. |
-| **5** | **Record deliveries** | `tests/deliveries/creation.test.ts` | Field employee can record full/half sheet deliveries linked to active vehicle assignment. |
-| **6** | **Calculate glass costs accurately** | `tests/math/glass-calculator.test.ts` | Validates full/half sheet quantities, FSE equivalents, and line totals with zero floating-point error. |
-| **7** | **Control special pricing** | `tests/pricing/approvals.test.ts` | Price $< \text{standard}$ requires manager approval; self-approval is blocked by DB constraint. |
-| **8** | **Record cash & M-Pesa declarations** | `tests/payments/declarations.test.ts` | Declarations recorded across cash, till, and employee phone; balance math verified. |
-| **9** | **Record credit deliveries** | `tests/payments/credit.test.ts` | Credit deliveries validated against credit limit; balance updated on credit account. |
-| **10**| **Record subsequent collections** | `tests/payments/collections.test.ts` | Cash collectors log collections; payments allocated to open invoices and balances updated. |
-| **11**| **Notify customers** | `tests/notifications/dispatch.test.ts` | Submitting delivery enqueues SMS receipt with reference, items, cash, M-Pesa, and balance. |
-| **12**| **Receive YES & NO responses** | `tests/notifications/webhooks.test.ts` | Webhook processes reply '1' to `confirmed` and reply '2' to `disputed`. |
-| **13**| **Follow up on disputed deliveries** | `tests/notifications/disputes.test.ts` | System dispatches 1-5 dispute questionnaire; category logged and alert shown to owner. |
-| **14**| **Track stock movements** | `tests/inventory/movements.test.ts` | Full/half sheet transformations, dispatches, deliveries, and returns reconcile to zero. |
-| **15**| **View employee delivery activity** | `tests/management/activity.test.ts` | Dashboard shows all deliveries, declared funds, and sync states per employee. |
-| **16**| **View phone GPS locations** | `tests/gps/telemetry.test.ts` | Dashboard renders device coordinates, capture timestamps, accuracy, and stale warnings. |
-| **17**| **View assigned vehicles and routes**| `tests/fleet/monitoring.test.ts` | Real-time map displays active company trucks, assigned routes, and communication age. |
-| **18**| **Record transactions offline** | `tests/offline/outbox.test.ts` | Full delivery with items and payments recorded in IndexedDB with network off. |
-| **19**| **Synchronize offline data reliably** | `tests/offline/sync-engine.test.ts` | Reconnecting syncs outbox idempotently without duplicate records or lost data. |
-| **20**| **Access permanent sales history** | `tests/audit/sales-history.test.ts` | Filterable history shows all submitted deliveries; hard deletion is blocked by triggers. |
-| **21**| **Review audit logs** | `tests/audit/audit-logs.test.ts` | Append-only audit trail captures actor, timestamp, IP, and before/after state diffs. |
-| **22**| **Enforce role permissions** | `tests/rbac/rls-enforcement.test.ts` | RLS and server actions prevent unauthorized access, self-approval, or cross-route snooping. |
+corepack pnpm --version
+corepack pnpm install --frozen-lockfile
+corepack pnpm test
+corepack pnpm run typecheck
+corepack pnpm run build
+```
+
+Expected package-manager version: `9.15.9`.
+
+Save the complete output for all three checks. Do not merge if a command fails. Do not suppress failures, skip a suite, remove a database assertion, or weaken an authorization rule merely to obtain a green result.
+
+## 3. What the PGlite database suite does and does not prove
+
+The PGlite suite is valuable for applying SQL to a PostgreSQL-compatible engine and checking function logic, constraints, function grants and policy definitions. It is not a replacement for a fresh Supabase staging project.
+
+A separate staging test must still verify:
+- Supabase Auth sessions and profile lookups.
+- Actual PostgREST access using owner, manager, salesperson, driver, cash_collector and accountant accounts.
+- RLS behavior against rows belonging to other employees.
+- Migration compatibility with the selected hosted Supabase project.
+- Atomic stock and delivery transactions under real concurrent requests.
+- Authenticated webhook processing and provider behavior.
+- Offline synchronization and conflict handling in an actual browser.
+
+## 4. Online staging test matrix
+
+| # | Scenario | Required pass condition |
+|---|---|---|
+| 1 | Owner sign-in | Owner Auth account maps to an active `profiles` row and reaches the app. |
+| 2 | Role restrictions | Non-management users cannot access fleet administration or receive/dispatch stock. |
+| 3 | Customer creation | Owner/manager can create a customer; duplicate account number is rejected. |
+| 4 | Fleet setup | Owner/manager creates a vehicle/route/driver/salesperson shift; vehicle and crew conflicts are rejected. |
+| 5 | Shift closure | Manager closes a shift; a later non-overlapping shift may be assigned. |
+| 6 | Warehouse receipt | Owner/manager records full and half sheets at a warehouse and the stock ledger/balance agree. |
+| 7 | Vehicle dispatch | Owner/manager transfers stock from warehouse to a truck; insufficient stock is rejected. |
+| 8 | Full-sheet delivery | Delivery uses the assigned vehicle location and writes one atomic invoice/stock transaction. |
+| 9 | Half-sheet delivery | Splitting one full sheet produces two halves; one delivered leaves one half; FSE is conserved. |
+| 10 | Credit delivery | Credit must be explicit, customer eligibility and limit are enforced, and credit is not counted as cash received. |
+| 11 | Collection and allocation | Collection is recorded separately; only explicit allocation changes the intended invoice balance. |
+| 12 | Delivery ledger | Persisted server deliveries appear in the ledger; browser-only items remain separately labelled. |
+| 13 | Offline replay | Same payload/UUID is idempotent; changed payload is rejected; stale records remain in needs-review. |
+| 14 | SMS webhook | Invalid secret and missing provider message ID are rejected; valid replies are deduplicated and mapped to the intended delivery. |
+| 15 | Demo labeling | Simulated/local-only operations are never displayed as records written to the shared business database. |
+
+Use test data only. Keep real SMS disabled for the first staging pass.
+
+## 5. Known workflows not yet covered end-to-end
+
+The current staging build does not yet provide complete user-facing workflows for:
+- Employee invitation and profile administration.
+- Special-price and discount approval requests/reviews.
+- Employee turnover settlement.
+- Payment reversals and refunds.
+- Stock returns, damaged glass, and authorized stock adjustments.
+- Audit-log review and GPS fleet monitoring.
+- Scheduled outbound notification dispatch.
+
+These are not accepted as complete just because a table or database procedure exists. Track them separately in the implementation plan before calling the full system production-ready.
+
+## 6. Release gate
+
+A Vercel Preview may be shared for controlled testing only when:
+1. All three automated commands pass on the current branch head.
+2. All migrations apply to a fresh isolated Supabase staging database.
+3. Owner, manager, salesperson, driver and cash_collector role access is verified against staging data.
+4. The staging scenarios relevant to the preview pass without data-integrity or authorization errors.
+5. The Preview uses `GDMS_DEMO_MODE=false` and only test data/secrets.
+
+A passing build is necessary, not sufficient. A Vercel Preview is not production approval.

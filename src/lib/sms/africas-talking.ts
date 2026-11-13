@@ -1,4 +1,5 @@
 // TOKA GDMS — Africa's Talking SMS Gateway Integration
+import { isExplicitDemoMode, isSupabaseConfigured } from '../runtime.ts';
 
 export interface SendSmsParams {
   to: string;
@@ -31,12 +32,10 @@ export async function sendSms({ to, message, deliveryReference }: SendSmsParams)
 
   // Development / Simulation Mode
   if (!username || !apiKey || username === 'sandbox' || apiKey === 'placeholder') {
+    if (!isExplicitDemoMode() || isSupabaseConfigured()) return { success: false, error: 'Africa\'s Talking credentials are not configured; SMS was not sent.' };
     console.log(`[SMS SIMULATION] To: ${formattedPhone} | From: ${senderId} | Ref: ${deliveryReference || 'N/A'}`);
     console.log(`[SMS SIMULATION] Body:\n${message}\n`);
-    return {
-      success: true,
-      messageId: `sim-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-    };
+    return { success: true, messageId: `sim-${Date.now()}-${Math.floor(Math.random() * 10000)}` };
   }
 
   try {

@@ -122,7 +122,43 @@ export async function queueOfflineDelivery(delivery: QueuedOfflineDelivery): Pro
  */
 export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
   const db = await getOfflineDb();
-  return db.getAllFromIndex('outbox', 'by-status', 'pending');
+  const tx = db.transaction('outbox', 'readwrite');
+  const store = tx.objectStore('outbox');
+  const records = await store.getAll();
+  const pending: QueuedOfflineDelivery[] = [];
+
+  for (const record of records) {
+    // Recover records left in "syncing" when the tab/browser closed mid-request.
+    if (record.syncStatus === 'syncing') {
+      record.syncStatus = 'pending';
+      record.errorMessage = 'Previous synchronization was interrupted; safe idempotent retry is available.';
+      // Queue the write immediately; avoid awaiting inside the transaction loop,
+      // which can allow IndexedDB to auto-commit between records.
+      void store.put(record);
+    }
+    if (record.syncStatus === 'pending') pending.push(record);
+  }
+
+  await tx.done;
+  return pending;
+}
+
+export async function getOfflineOutboxStatusCounts(): Promise<{
+  pending: number;
+  needsReview: number;
+  localSaved: number;
+}> {
+  const db = await getOfflineDb();
+  const records = await db.getAll('outbox');
+  return records.reduce(
+    (counts, record) => {
+      if (record.syncStatus === 'pending' || record.syncStatus === 'syncing') counts.pending++;
+      if (record.syncStatus === 'needs_review' || record.syncStatus === 'failed') counts.needsReview++;
+      if (record.syncStatus === 'local_saved') counts.localSaved++;
+      return counts;
+    },
+    { pending: 0, needsReview: 0, localSaved: 0 }
+  );
 }
 
 /**
@@ -130,7 +166,7 @@ export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
  */
 export async function updateDeliverySyncStatus(
   clientTxId: string,
-  status: 'pending' | 'syncing' | 'synced' | 'failed',
+  status: 'local_saved' | 'pending' | 'syncing' | 'synced' | 'needs_review' | 'failed',
   errorMessage?: string
 ): Promise<void> {
   const db = await getOfflineDb();
@@ -140,6 +176,8 @@ export async function updateDeliverySyncStatus(
   if (item) {
     item.syncStatus = status;
     if (errorMessage) item.errorMessage = errorMessage;
+    else if (status === 'pending' || status === 'syncing' || status === 'synced') item.errorMessage = undefined;
+    if (status === 'syncing') item.retryCount = (item.retryCount || 0) + 1;
     if (status === 'synced') item.syncedAt = new Date().toISOString();
     await store.put(item);
   }

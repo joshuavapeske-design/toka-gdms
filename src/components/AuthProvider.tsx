@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { isSupabaseConfigured } from '@/lib/runtime';
 import type { UserRole } from '@/types';
 
 export interface SessionUser {
@@ -90,8 +91,10 @@ export function AuthProvider({ children, initialUser }: { children: ReactNode; i
   }, [initialUser]);
 
   const signOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    if (isSupabaseConfigured()) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    }
     setUser(null);
     window.location.href = '/login';
   };

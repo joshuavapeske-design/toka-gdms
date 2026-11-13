@@ -73,6 +73,143 @@ async function runDatabaseTests() {
   await db.exec(sql2);
   assert(true, '20261110000000_rls_policies_and_atomic_rpc.sql applied cleanly');
 
+  const sql3 = fs.readFileSync(path.resolve('supabase/migrations/20261110190000_pre_supabase_security_hardening.sql'), 'utf8');
+  await db.exec(sql3);
+  assert(true, '20261110190000_pre_supabase_security_hardening.sql applied cleanly');
+
+  const sql4 = fs.readFileSync(path.resolve('supabase/migrations/20261113170000_fleet_shift_management.sql'), 'utf8');
+  await db.exec(sql4);
+  assert(true, '20261113170000_fleet_shift_management.sql applied cleanly');
+
+  const sql5 = fs.readFileSync(path.resolve('supabase/migrations/20261113173000_stock_movement_security.sql'), 'utf8');
+  await db.exec(sql5);
+  assert(true, '20261113173000_stock_movement_security.sql applied cleanly');
+
+  const sql6 = fs.readFileSync(path.resolve('supabase/migrations/20261113180000_nairobi_business_day.sql'), 'utf8');
+  await db.exec(sql6);
+  assert(true, '20261113180000_nairobi_business_day.sql applied cleanly');
+
+  const businessTimezoneChecks = await db.query<any>(`
+    SELECT
+      EXISTS (SELECT 1 FROM unnest(proconfig) AS setting WHERE setting ILIKE 'timezone=africa/nairobi') AS is_nairobi
+    FROM pg_proc
+    WHERE proname = 'submit_delivery_atomic'
+    LIMIT 1
+  `);
+  assert(businessTimezoneChecks.rows[0]?.is_nairobi === true, 'Delivery transaction uses Nairobi business timezone');
+
+  const collectionTimezoneChecks = await db.query<any>(`
+    SELECT EXISTS (SELECT 1 FROM unnest(proconfig) AS setting WHERE setting ILIKE 'timezone=africa/nairobi') AS is_nairobi
+    FROM pg_proc
+    WHERE proname = 'record_customer_collection'
+    LIMIT 1
+  `);
+  assert(collectionTimezoneChecks.rows[0]?.is_nairobi === true, 'Customer collection and turnover use Nairobi business timezone');
+
+  const privilegeChecks = await db.query<any>(`
+    SELECT
+      has_function_privilege('anon', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS anon_stock_receive,
+      has_function_privilege('service_role', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS service_stock_receive,
+      has_function_privilege('authenticated', 'public.dispatch_stock_vehicle(uuid,uuid,uuid,integer,integer,text)', 'EXECUTE') AS authenticated_stock_dispatch,
+      has_function_privilege('authenticated', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS authenticated_sms_processor,
+      has_function_privilege('service_role', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS service_sms_processor,
+      has_function_privilege('authenticated', 'public.submit_delivery_atomic(text,uuid,text,uuid,uuid,uuid,numeric,numeric,numeric,numeric,numeric,payment_status_enum,numeric,numeric,numeric,timestamp with time zone,boolean,text,jsonb,jsonb,uuid)', 'EXECUTE') AS authenticated_delivery_submit
+  `);
+  const grants = privilegeChecks.rows[0];
+  assert(grants.anon_stock_receive === false, 'Anonymous users cannot execute stock receipt RPC');
+  assert(grants.service_stock_receive === false, 'Service role cannot bypass the authenticated manager stock receipt policy');
+  assert(grants.authenticated_stock_dispatch === true, 'Authenticated role can invoke stock dispatch subject to database role checks');
+  assert(grants.authenticated_sms_processor === false, 'Authenticated users cannot forge provider SMS RPC calls');
+  assert(grants.service_sms_processor === true, 'Service role can process provider SMS callbacks');
+  assert(grants.authenticated_delivery_submit === true, 'Authenticated employees can execute the delivery RPC');
+
+  const readPolicyChecks = await db.query<any>(`
+    SELECT
+      has_table_privilege('anon', 'public.profiles', 'SELECT') AS anon_profiles,
+      has_table_privilege('authenticated', 'public.profiles', 'SELECT') AS authenticated_profiles,
+      has_table_privilege('anon', 'public.customers', 'SELECT') AS anon_customers,
+      has_table_privilege('anon', 'public.customer_contacts', 'SELECT') AS anon_contacts,
+      has_table_privilege('anon', 'public.inventory_balances', 'SELECT') AS anon_inventory,
+      has_table_privilege('anon', 'public.deliveries', 'SELECT') AS anon_deliveries,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'customers'
+          AND policyname = 'customers_select_authenticated'
+          AND 'authenticated' = ANY(roles)
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS customer_policy_role_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'inventory_balances'
+          AND policyname = 'inventory_balances_select_authenticated'
+          AND 'authenticated' = ANY(roles)
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS inventory_policy_role_scoped,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'vehicles' AND policyname = 'vehicles_modify'
+      ) AS vehicle_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'routes' AND policyname = 'routes_modify'
+      ) AS route_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'vehicle_assignments' AND policyname = 'assignments_modify'
+      ) AS shift_writes_rpc_only,
+      NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'stock_locations' AND policyname = 'stock_locations_modify'
+      ) AS stock_locations_rpc_only
+  `);
+  const readPolicies = readPolicyChecks.rows[0];
+  assert(readPolicies.anon_profiles === false, 'Anonymous users have no direct SELECT grant on employee profiles');
+  assert(readPolicies.authenticated_profiles === true, 'Authenticated employees can resolve their own profile subject to RLS');
+  assert(readPolicies.anon_customers === false, 'Anonymous users have no direct SELECT grant on customer records');
+  assert(readPolicies.anon_contacts === false, 'Anonymous users have no direct SELECT grant on customer contact records');
+  assert(readPolicies.anon_inventory === false, 'Anonymous users have no direct SELECT grant on inventory balances');
+  assert(readPolicies.anon_deliveries === false, 'Anonymous users have no direct SELECT grant on delivery records');
+  assert(readPolicies.customer_policy_role_scoped === true, 'Customer reads require an authenticated employee role');
+  assert(readPolicies.inventory_policy_role_scoped === true, 'Inventory reads require an authorized employee role');
+  assert(readPolicies.vehicle_writes_rpc_only === true, 'Vehicle writes are routed through the audited fleet procedure');
+  assert(readPolicies.route_writes_rpc_only === true, 'Route writes are routed through the audited fleet procedure');
+  assert(readPolicies.shift_writes_rpc_only === true, 'Vehicle shift writes are routed through the audited fleet procedure');
+  assert(readPolicies.stock_locations_rpc_only === true, 'Stock location writes are routed through controlled procedures');
+
+  const sensitiveReadPolicies = await db.query<any>(`
+    SELECT
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'payment_allocations'
+          AND policyname = 'allocations_select_scoped'
+          AND qual ILIKE '%collections%'
+      ) AS allocation_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'customer_confirmation_events'
+          AND policyname = 'confirmation_events_select_scoped'
+          AND qual ILIKE '%vehicle_assignments%'
+      ) AS confirmation_events_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'customer_disputes'
+          AND policyname = 'disputes_select_roles'
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS disputes_policy_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'credit_accounts'
+          AND policyname = 'credit_accounts_select_roles'
+          AND qual ILIKE '%cash_collector%'
+      ) AS credit_policy_scoped
+  `);
+  assert(sensitiveReadPolicies.rows[0].allocation_policy_scoped === true, 'Payment allocation reads are limited to finance roles or the collection owner');
+  assert(sensitiveReadPolicies.rows[0].confirmation_events_policy_scoped === true, 'Customer confirmation events are limited to admins and the delivery team');
+  assert(sensitiveReadPolicies.rows[0].disputes_policy_scoped === true, 'Customer dispute records are limited to management and accounting');
+  assert(sensitiveReadPolicies.rows[0].credit_policy_scoped === true, 'Customer credit ledger reads are limited to relevant internal roles');
+
   // Verify inventory_balances table exists
   const tableCheck = await db.query<any>(`
     SELECT table_name FROM information_schema.tables 
@@ -95,7 +232,8 @@ async function runDatabaseTests() {
       ('${salesId}', 'sales@tokaglass.co.ke'),
       ('${driverId}', 'driver@tokaglass.co.ke'),
       ('${collectorId}', 'collector@tokaglass.co.ke'),
-      ('${otherDriverId}', 'otherdriver@tokaglass.co.ke')
+      ('${otherDriverId}', 'otherdriver@tokaglass.co.ke'),
+      ('00000000-0000-0000-0000-000000000007', 'sales2@tokaglass.co.ke')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO profiles (id, full_name, role, phone_number, is_active) VALUES
@@ -104,7 +242,8 @@ async function runDatabaseTests() {
       ('${salesId}', 'Grace Muthoni', 'salesperson', '+254700000003', true),
       ('${driverId}', 'David Ochieng', 'driver', '+254700000004', true),
       ('${collectorId}', 'John Collector', 'cash_collector', '+254700000005', true),
-      ('${otherDriverId}', 'Unassigned Driver', 'driver', '+254700000006', true)
+      ('${otherDriverId}', 'Unassigned Driver', 'driver', '+254700000006', true),
+      ('00000000-0000-0000-0000-000000000007', 'Second Salesperson', 'salesperson', '+254700000007', true)
     ON CONFLICT (id) DO UPDATE SET is_active = true;
   `);
 
@@ -131,6 +270,10 @@ async function runDatabaseTests() {
     VALUES ('${truckLocationId}', 'Truck KBZ 123X Mobile Bay', 'truck', '${vehicleId}', true)
     ON CONFLICT (name) DO NOTHING;
 
+    INSERT INTO stock_locations (id, name, location_type, vehicle_id, is_active)
+    VALUES ('${warehouseId}', 'Main Test Warehouse', 'warehouse', NULL, true)
+    ON CONFLICT (name) DO NOTHING;
+
     INSERT INTO customers (id, account_number, name, primary_phone, delivery_area, is_credit_eligible, credit_limit, is_active, created_by)
     VALUES
       ('44444444-4444-4444-4444-444444444401', 'CUST-001', 'Kariuki Glass & Hardware', '+254712345678', 'Gikomba Market', true, 50000.00, true, '${ownerId}'),
@@ -152,7 +295,136 @@ async function runDatabaseTests() {
     }
   };
 
-  console.log('\n--- Suite 2: Caller Authentication & Vehicle Shift Enforcement ---');
+  // Stock procedures must reject non-management roles even when called
+  // directly through PostgREST, without relying on the API route guard.
+  await setAuthUser(salesId);
+  await assertRejects(
+    db.query<any>(`SELECT receive_stock_warehouse('${prod4mm}'::uuid, '${warehouseId}'::uuid, 2, 0, 'unauthorized receipt test');`),
+    'ROLE_NOT_AUTHORIZED',
+    'Salesperson cannot call warehouse receipt RPC directly'
+  );
+  await assertRejects(
+    db.query<any>(`SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 1, 0, 'unauthorized dispatch test');`),
+    'ROLE_NOT_AUTHORIZED',
+    'Salesperson cannot call vehicle dispatch RPC directly'
+  );
+
+  await setAuthUser(managerId);
+  const receivedStock = await db.query<any>(`
+    SELECT receive_stock_warehouse('${prod4mm}'::uuid, '${warehouseId}'::uuid, 10, 2, 'Test opening receipt') AS result;
+  `);
+  assert(receivedStock.rows[0].result.success === true, 'Manager can receive warehouse stock');
+  const dispatchedStock = await db.query<any>(`
+    SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 4, 1, 'Test truck loading') AS result;
+  `);
+  assert(dispatchedStock.rows[0].result.success === true, 'Manager can dispatch stock to an active vehicle location');
+
+  const stockBalances = await db.query<any>(`
+    SELECT
+      (SELECT full_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${warehouseId}') AS warehouse_full,
+      (SELECT half_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${warehouseId}') AS warehouse_half,
+      (SELECT full_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${truckLocationId}') AS vehicle_full,
+      (SELECT half_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${truckLocationId}') AS vehicle_half
+  `);
+  assert(stockBalances.rows[0].warehouse_full === 6 && stockBalances.rows[0].warehouse_half === 1, 'Warehouse balance matches the received less dispatched physical sheets');
+  assert(stockBalances.rows[0].vehicle_full === 4 && stockBalances.rows[0].vehicle_half === 1, 'Vehicle balance matches the dispatched physical sheets');
+
+  await assertRejects(
+    db.query<any>(`SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 7, 0, 'Excess dispatch test');`),
+    'INSUFFICIENT_WAREHOUSE_STOCK',
+    'Vehicle dispatch cannot exceed the warehouse physical stock'
+  );
+
+  await setAuthUser(null);
+
+  // Exercise the policies as the actual Supabase database roles, not only as the
+  // migration owner. This validates role-granted table access plus RLS filtering.
+  await db.exec('SET ROLE anon');
+  await assertRejects(
+    db.query<any>(`SELECT id FROM customers LIMIT 1;`),
+    'permission denied',
+    'Anonymous database role cannot read customer records'
+  );
+  await db.exec('RESET ROLE');
+
+  await setAuthUser(salesId);
+  await db.exec('SET ROLE authenticated');
+  const authenticatedCustomerRead = await db.query<any>(`SELECT id FROM customers;`);
+  assert(authenticatedCustomerRead.rows.length > 0, 'Authorized salesperson can read customer directory records');
+
+  const salespersonDisputeRead = await db.query<any>(`SELECT id FROM customer_disputes;`);
+  assert(salespersonDisputeRead.rows.length === 0, 'Salesperson cannot read management dispute records');
+  await db.exec('RESET ROLE');
+  await setAuthUser(null);
+
+  const fleetGrantChecks = await db.query<any>(`
+    SELECT
+      has_function_privilege('anon', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS anon_create_shift,
+      has_function_privilege('authenticated', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS employee_create_shift,
+      has_function_privilege('service_role', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS service_create_shift
+  `);
+  assert(fleetGrantChecks.rows[0].anon_create_shift === false, 'Anonymous users cannot create vehicle shifts');
+  assert(fleetGrantChecks.rows[0].employee_create_shift === true, 'Authenticated users can invoke the role-checked shift procedure');
+  assert(fleetGrantChecks.rows[0].service_create_shift === false, 'Service role cannot bypass the employee shift procedure');
+
+  console.log('\n--- Suite 2: Fleet Setup & Shift Assignment ---');
+  await setAuthUser(managerId);
+  const assignmentResult = await db.query<any>(`
+    SELECT create_vehicle_shift_assignment(
+      'KBC 456Y',
+      'Isuzu NQR 7-Tonne',
+      7.0,
+      'RT-02',
+      'Westlands - Parklands',
+      'Westlands and Parklands delivery route',
+      '${otherDriverId}',
+      '00000000-0000-0000-0000-000000000007',
+      (timezone('Africa/Nairobi', now() - INTERVAL '1 minute'))::date,
+      now() - INTERVAL '1 minute'
+    ) AS result
+  `);
+  const createdShift = assignmentResult.rows[0].result;
+  assert(Boolean(createdShift.assignment_id), 'Fleet setup creates a vehicle shift assignment');
+  assert(Boolean(createdShift.stock_location_id), 'Fleet setup creates the vehicle stock location automatically');
+
+  await assertRejects(
+    db.query<any>(`
+      SELECT create_vehicle_shift_assignment(
+        'KBC 456Y', 'Isuzu NQR 7-Tonne', 7.0, 'RT-02', 'Westlands - Parklands', NULL,
+        '${otherDriverId}', '00000000-0000-0000-0000-000000000007',
+        (timezone('Africa/Nairobi', now() - INTERVAL '1 minute'))::date, now() - INTERVAL '1 minute'
+      );
+    `),
+    'SHIFT_CONFLICT',
+    'The same vehicle and crew cannot receive overlapping active shifts'
+  );
+
+  await db.query<any>(`SELECT close_vehicle_shift('${createdShift.assignment_id}', now());`);
+  const closedShiftCheck = await db.query<any>(`
+    SELECT is_active, ended_at FROM vehicle_assignments WHERE id = '${createdShift.assignment_id}'
+  `);
+  assert(closedShiftCheck.rows[0].is_active === false && Boolean(closedShiftCheck.rows[0].ended_at), 'Manager can close a vehicle shift and record its end time');
+
+  const reassignmentResult = await db.query<any>(`
+    SELECT create_vehicle_shift_assignment(
+      'KBC 456Y',
+      'Isuzu NQR 7-Tonne',
+      7.0,
+      'RT-02',
+      'Westlands - Parklands',
+      NULL,
+      '${otherDriverId}',
+      '00000000-0000-0000-0000-000000000007',
+      (timezone('Africa/Nairobi', now() + INTERVAL '30 seconds'))::date,
+      now() + INTERVAL '30 seconds'
+    ) AS result
+  `);
+  assert(Boolean(reassignmentResult.rows[0].result.assignment_id), 'Vehicle and crew can be reassigned after the previous shift ends');
+
+  await db.query<any>(`SELECT close_vehicle_shift('${reassignmentResult.rows[0].result.assignment_id}', now() + INTERVAL '1 minute');`);
+  await setAuthUser(null);
+
+  console.log('\n--- Suite 3: Caller Authentication & Vehicle Shift Enforcement ---');
   // 1. Unauthenticated execution rejected
   await setAuthUser(null);
   await assertRejects(
@@ -414,6 +686,23 @@ async function runDatabaseTests() {
     'IDEMPOTENCY_PAYLOAD_MISMATCH',
     'Reusing clientTxId with modified payload rejected as tampering'
   );
+
+  // A network response may be lost after the atomic transaction commits. A later
+  // exact retry must still return the existing delivery after its shift has closed.
+  await setAuthUser(managerId);
+  await db.query<any>(`SELECT close_vehicle_shift('${assignmentId}', now());`);
+  await setAuthUser(driverId);
+  const closedShiftReplay = await db.query<any>(`
+    SELECT submit_delivery_atomic(
+      'GD-202611-0030', '${txIdIdempotency}', '${canonicalHashReal}',
+      '${custEligibleId}', '${driverId}', '${assignmentId}',
+      3200.00, 0.00, 3200.00, 3200.00, 0.00, 'fully_paid',
+      NULL, NULL, NULL, NULL, false, 'Idempotency test',
+      '[{"productId":"${prod4mm}","sellingUnit":"FULL_SHEET","quantity":1,"appliedUnitPrice":3200.00}]'::jsonb,
+      '[{"channel":"cash","declaredAmount":3200.00}]'::jsonb
+    );
+  `);
+  assert(closedShiftReplay.rows[0].submit_delivery_atomic.duplicate === true, 'Exact committed retry is acknowledged even after the vehicle shift closes');
 
   console.log('\n--- Suite 7: Collections, Multi-Invoice Allocations & Turnover ---');
   // 1. Record customer collection
