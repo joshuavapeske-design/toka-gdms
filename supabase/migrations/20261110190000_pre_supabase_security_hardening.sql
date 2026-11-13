@@ -2029,7 +2029,7 @@ REVOKE ALL ON TABLE
   credit_accounts,
   price_approval_requests,
   discount_approval_requests
-FROM anon;
+FROM PUBLIC, anon;
 
 -- Make the intended authenticated read surface explicit rather than relying on
 -- project-wide default grants. Row-level policies above still determine each row.
@@ -2144,6 +2144,113 @@ FOR SELECT TO authenticated
 USING (auth.get_user_role() IN (
   'owner', 'manager', 'salesperson', 'driver', 'accountant'
 ));
+
+-- Sensitive finance, confirmation and dispute records must not be globally
+-- readable by every authenticated employee.
+DROP POLICY IF EXISTS "credit_accounts_select" ON credit_accounts;
+CREATE POLICY credit_accounts_select_roles ON credit_accounts
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'accountant', 'salesperson', 'cash_collector'
+));
+
+DROP POLICY IF EXISTS "allocations_select" ON payment_allocations;
+CREATE POLICY allocations_select_scoped ON payment_allocations
+FOR SELECT TO authenticated
+USING (
+  auth.get_user_role() IN ('owner', 'manager', 'accountant')
+  OR EXISTS (
+    SELECT 1 FROM collections c
+    WHERE c.id = payment_allocations.collection_id
+      AND c.collected_by = auth.uid()
+  )
+);
+
+DROP POLICY IF EXISTS "confirmations_select" ON customer_confirmations;
+CREATE POLICY confirmations_select_scoped ON customer_confirmations
+FOR SELECT TO authenticated
+USING (
+  auth.get_user_role() IN ('owner', 'manager', 'accountant')
+  OR EXISTS (
+    SELECT 1 FROM deliveries d
+    WHERE d.id = customer_confirmations.delivery_id
+      AND (
+        d.created_by = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM vehicle_assignments va
+          WHERE va.id = d.vehicle_assignment_id
+            AND (va.driver_id = auth.uid() OR va.salesperson_id = auth.uid())
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS "confirmation_events_select" ON customer_confirmation_events;
+CREATE POLICY confirmation_events_select_scoped ON customer_confirmation_events
+FOR SELECT TO authenticated
+USING (
+  auth.get_user_role() IN ('owner', 'manager', 'accountant')
+  OR EXISTS (
+    SELECT 1 FROM deliveries d
+    WHERE d.id = customer_confirmation_events.delivery_id
+      AND (
+        d.created_by = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM vehicle_assignments va
+          WHERE va.id = d.vehicle_assignment_id
+            AND (va.driver_id = auth.uid() OR va.salesperson_id = auth.uid())
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS "disputes_select" ON customer_disputes;
+CREATE POLICY disputes_select_roles ON customer_disputes
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+
+DROP POLICY IF EXISTS "stock_transformations_select" ON stock_transformations;
+CREATE POLICY stock_transformations_select_roles ON stock_transformations
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN ('owner', 'manager', 'accountant', 'driver'));
+
+DROP POLICY IF EXISTS "stock_movements_select" ON stock_movements;
+CREATE POLICY stock_movements_select_roles ON stock_movements
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN ('owner', 'manager', 'accountant', 'driver'));
+
+DROP POLICY IF EXISTS "delivery_items_select" ON delivery_items;
+CREATE POLICY delivery_items_select_assigned_team ON delivery_items
+FOR SELECT TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM deliveries d
+    WHERE d.id = delivery_items.delivery_id
+      AND (
+        auth.get_user_role() IN ('owner', 'manager', 'accountant')
+        OR d.created_by = auth.uid()
+        OR EXISTS (
+          SELECT 1 FROM vehicle_assignments va
+          WHERE va.id = d.vehicle_assignment_id
+            AND (va.driver_id = auth.uid() OR va.salesperson_id = auth.uid())
+        )
+      )
+  )
+);
+
+DROP POLICY IF EXISTS "payment_decl_select" ON payment_declarations;
+CREATE POLICY payment_declarations_select_assigned_team ON payment_declarations
+FOR SELECT TO authenticated
+USING (
+  auth.get_user_role() IN ('owner', 'manager', 'accountant')
+  OR declared_by = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM deliveries d
+    JOIN vehicle_assignments va ON va.id = d.vehicle_assignment_id
+    WHERE d.id = payment_declarations.delivery_id
+      AND (va.driver_id = auth.uid() OR va.salesperson_id = auth.uid())
+  )
+);
 
 -- Location telemetry may only be submitted for the authenticated employee's own
 -- account; an allowed role alone must not permit employee_id impersonation.
