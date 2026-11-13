@@ -710,8 +710,12 @@ BEGIN
         RAISE EXCEPTION 'INVALID_ASSIGNMENT: Vehicle assignment % does not exist', p_vehicle_assignment_id;
     END IF;
 
-    IF NOT v_assignment.is_active THEN
-        RAISE EXCEPTION 'INACTIVE_ASSIGNMENT: Vehicle assignment % is not active', p_vehicle_assignment_id;
+    -- Online submissions require a currently active assignment. An offline delivery
+    -- may arrive after the shift has closed, but only when the assignment has a real
+    -- ended_at timestamp; the original device capture time is validated below.
+    IF NOT v_assignment.is_active
+       AND (NOT p_is_offline_submission OR v_assignment.ended_at IS NULL) THEN
+        RAISE EXCEPTION 'INACTIVE_ASSIGNMENT: Vehicle assignment % is not active for this submission', p_vehicle_assignment_id;
     END IF;
 
     v_effective_delivery_time := CASE
