@@ -34,8 +34,26 @@ export async function GET() {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
       }
 
-      // Query active assignment for this employee
-      const { data, error } = await supabase
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role,is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !profile?.is_active) {
+        return NextResponse.json({ success: false, error: 'Active employee profile required.' }, { status: 403 });
+      }
+
+      // Owners and managers may submit audited override deliveries for a team
+      // assignment. Field employees only receive their own assigned shift.
+      const isManagerOverride = profile.role === 'owner' || profile.role === 'manager';
+      if (!isManagerOverride && profile.role !== 'driver' && profile.role !== 'salesperson') {
+        return NextResponse.json({ success: true, data: null });
+      }
+
+      // Query a current active assignment for this employee, or the latest active
+      // team assignment for an authorized owner/manager.
+      let assignmentQuery = supabase
         .from('vehicle_assignments')
         .select(`
           id,
@@ -55,8 +73,13 @@ export async function GET() {
         `)
         .eq('is_active', true)
         .eq('shift_date', new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date()))
-        .lte('started_at', new Date().toISOString())
-        .or(`driver_id.eq.${user.id},salesperson_id.eq.${user.id}`)
+        .lte('started_at', new Date().toISOString());
+
+      if (!isManagerOverride) {
+        assignmentQuery = assignmentQuery.or(`driver_id.eq.${user.id},salesperson_id.eq.${user.id}`);
+      }
+
+      const { data, error } = await assignmentQuery
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
