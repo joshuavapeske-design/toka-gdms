@@ -130,7 +130,7 @@ export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
  */
 export async function updateDeliverySyncStatus(
   clientTxId: string,
-  status: 'pending' | 'syncing' | 'synced' | 'failed',
+  status: 'local_saved' | 'pending' | 'syncing' | 'synced' | 'failed',
   errorMessage?: string
 ): Promise<void> {
   const db = await getOfflineDb();
