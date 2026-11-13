@@ -37,6 +37,7 @@ In the Supabase SQL Editor, apply these migrations **in this order**, once each:
 3. `supabase/migrations/20261110190000_pre_supabase_security_hardening.sql`
 4. `supabase/migrations/20261113170000_fleet_shift_management.sql`
 5. `supabase/migrations/20261113173000_stock_movement_security.sql`
+6. `supabase/migrations/20261113180000_nairobi_business_day.sql`
 
 Stop if any migration reports an error. Do not continue with a partially migrated database. Do not remove or weaken a failing constraint or RLS policy just to make the migration run.
 
