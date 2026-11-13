@@ -1994,4 +1994,129 @@ DROP POLICY IF EXISTS collections_update ON collections;
 -- 10. Claim notifications safely for a server-side dispatcher
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- 11. Close anonymous access and require an active employee role for internal
+--     catalogue, customer, fleet and inventory reads.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON TABLE
+  customers,
+  customer_contacts,
+  products,
+  product_categories,
+  customer_prices,
+  vehicles,
+  routes,
+  vehicle_assignments,
+  stock_locations,
+  inventory_balances,
+  stock_transformations,
+  stock_movements,
+  deliveries,
+  delivery_items,
+  payment_declarations,
+  collections,
+  payment_allocations,
+  payment_reversals,
+  employee_turnovers,
+  inbound_sms_messages,
+  customer_confirmations,
+  customer_confirmation_events,
+  customer_disputes,
+  notifications,
+  location_samples,
+  audit_logs,
+  transaction_corrections,
+  credit_accounts,
+  price_approval_requests,
+  discount_approval_requests
+FROM anon;
+
+-- Replace permissive catalogue policies inherited from the first RLS migration.
+DROP POLICY IF EXISTS "customers_select_policy" ON customers;
+CREATE POLICY customers_select_authenticated ON customers
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'
+));
+
+DROP POLICY IF EXISTS "customer_contacts_select" ON customer_contacts;
+CREATE POLICY customer_contacts_select_authenticated ON customer_contacts
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'
+));
+
+DROP POLICY IF EXISTS "products_select_all" ON products;
+CREATE POLICY products_select_authenticated ON products
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'
+));
+
+DROP POLICY IF EXISTS "categories_select_all" ON product_categories;
+CREATE POLICY categories_select_authenticated ON product_categories
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'
+));
+
+DROP POLICY IF EXISTS "customer_prices_select" ON customer_prices;
+CREATE POLICY customer_prices_select_authenticated ON customer_prices
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'
+));
+
+DROP POLICY IF EXISTS "vehicles_select" ON vehicles;
+CREATE POLICY vehicles_select_authenticated ON vehicles
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+DROP POLICY IF EXISTS "routes_select" ON routes;
+CREATE POLICY routes_select_authenticated ON routes
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+DROP POLICY IF EXISTS "stock_locations_select" ON stock_locations;
+CREATE POLICY stock_locations_select_authenticated ON stock_locations
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+DROP POLICY IF EXISTS "inventory_balances_select" ON inventory_balances;
+CREATE POLICY inventory_balances_select_authenticated ON inventory_balances
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+DROP POLICY IF EXISTS "stock_transformations_select" ON stock_transformations;
+CREATE POLICY stock_transformations_select_authenticated ON stock_transformations
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+DROP POLICY IF EXISTS "stock_movements_select" ON stock_movements;
+CREATE POLICY stock_movements_select_authenticated ON stock_movements
+FOR SELECT TO authenticated
+USING (auth.get_user_role() IN (
+  'owner', 'manager', 'salesperson', 'driver', 'accountant'
+));
+
+-- Location telemetry may only be submitted for the authenticated employee's own
+-- account; an allowed role alone must not permit employee_id impersonation.
+DROP POLICY IF EXISTS "location_samples_insert" ON location_samples;
+CREATE POLICY location_samples_insert_self ON location_samples
+FOR INSERT TO authenticated
+WITH CHECK (
+  employee_id = auth.uid()
+  AND auth.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
+);
+
 COMMIT;
