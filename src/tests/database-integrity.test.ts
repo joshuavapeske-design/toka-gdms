@@ -85,6 +85,27 @@ async function runDatabaseTests() {
   await db.exec(sql5);
   assert(true, '20261113173000_stock_movement_security.sql applied cleanly');
 
+  const sql6 = fs.readFileSync(path.resolve('supabase/migrations/20261113180000_nairobi_business_day.sql'), 'utf8');
+  await db.exec(sql6);
+  assert(true, '20261113180000_nairobi_business_day.sql applied cleanly');
+
+  const businessTimezoneChecks = await db.query<any>(`
+    SELECT
+      (proconfig @> ARRAY['TimeZone=Africa/Nairobi']) AS is_nairobi
+    FROM pg_proc
+    WHERE proname = 'submit_delivery_atomic'
+    LIMIT 1
+  `);
+  assert(businessTimezoneChecks.rows[0]?.is_nairobi === true, 'Delivery transaction uses Nairobi business timezone');
+
+  const collectionTimezoneChecks = await db.query<any>(`
+    SELECT (proconfig @> ARRAY['TimeZone=Africa/Nairobi']) AS is_nairobi
+    FROM pg_proc
+    WHERE proname = 'record_customer_collection'
+    LIMIT 1
+  `);
+  assert(collectionTimezoneChecks.rows[0]?.is_nairobi === true, 'Customer collection and turnover use Nairobi business timezone');
+
   const privilegeChecks = await db.query<any>(`
     SELECT
       has_function_privilege('anon', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS anon_stock_receive,
