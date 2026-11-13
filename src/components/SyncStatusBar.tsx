@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { getPendingDeliveries } from '@/lib/offline/db';
+import { getOfflineOutboxStatusCounts } from '@/lib/offline/db';
 import { syncPendingDeliveries, initAutoSync } from '@/lib/offline/sync';
 
 export function SyncStatusBar() {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [localSavedCount, setLocalSavedCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState<string | null>(null);
 
@@ -16,8 +18,10 @@ export function SyncStatusBar() {
 
     const checkPending = async () => {
       try {
-        const items = await getPendingDeliveries();
-        setPendingCount(items.length);
+        const counts = await getOfflineOutboxStatusCounts();
+        setPendingCount(counts.pending);
+        setNeedsReviewCount(counts.needsReview);
+        setLocalSavedCount(counts.localSaved);
       } catch {
         // Ignored if indexedDB is initializing
       }
@@ -53,8 +57,10 @@ export function SyncStatusBar() {
     setIsSyncing(true);
     try {
       const res = await syncPendingDeliveries();
-      const items = await getPendingDeliveries();
-      setPendingCount(items.length);
+      const counts = await getOfflineOutboxStatusCounts();
+      setPendingCount(counts.pending);
+      setNeedsReviewCount(counts.needsReview);
+      setLocalSavedCount(counts.localSaved);
       if (res.successCount > 0) {
         setLastSyncMessage(`Synced ${res.successCount} delivery records.`);
       } else if (res.failureCount > 0) {
@@ -84,6 +90,16 @@ export function SyncStatusBar() {
         {pendingCount > 0 && (
           <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">
             {pendingCount} Pending Sync
+          </span>
+        )}
+        {needsReviewCount > 0 && (
+          <span className="bg-red-500/20 text-red-300 border border-red-500/30 px-2 py-0.5 rounded-full font-semibold">
+            {needsReviewCount} Needs Review
+          </span>
+        )}
+        {localSavedCount > 0 && (
+          <span className="bg-slate-700 text-slate-200 border border-slate-600 px-2 py-0.5 rounded-full font-semibold">
+            {localSavedCount} Browser Only
           </span>
         )}
 
