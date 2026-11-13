@@ -4,7 +4,7 @@
 **Repository:** `joshuavapeske-design/toka-gdms`  
 **Current implementation branch:** `fix/pre-supabase-security-hardening`  
 **Protected baseline:** `main` (must remain unchanged until the implementation branch is verified)  
-**Pull request:** [#1 — Security hardening before Supabase staging](https://github.com/joshuavapeske-design/toka-gdapeske-design/toka-gdms/pull/1)
+**Pull request:** [#1 — Security hardening before Supabase staging](https://github.com/joshuavapeske-design/toka-gdms/pull/1)
 
 > **Release status: NOT YET VERIFIED — DO NOT MERGE OR DEPLOY TO PRODUCTION.**  
 > The improvements below have been committed to the implementation branch, but the latest branch has not yet completed a fresh `pnpm test`, TypeScript check, production build, and isolated Supabase staging test. Previous test results apply to an earlier commit and are not proof that this branch currently passes.
