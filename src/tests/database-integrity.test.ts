@@ -77,6 +77,10 @@ async function runDatabaseTests() {
   await db.exec(sql3);
   assert(true, '20261110190000_pre_supabase_security_hardening.sql applied cleanly');
 
+  const sql4 = fs.readFileSync(path.resolve('supabase/migrations/20261113170000_fleet_shift_management.sql'), 'utf8');
+  await db.exec(sql4);
+  assert(true, '20261113170000_fleet_shift_management.sql applied cleanly');
+
   const privilegeChecks = await db.query<any>(`
     SELECT
       has_function_privilege('anon', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS anon_stock_receive,
@@ -143,7 +147,8 @@ async function runDatabaseTests() {
       ('${salesId}', 'sales@tokaglass.co.ke'),
       ('${driverId}', 'driver@tokaglass.co.ke'),
       ('${collectorId}', 'collector@tokaglass.co.ke'),
-      ('${otherDriverId}', 'otherdriver@tokaglass.co.ke')
+      ('${otherDriverId}', 'otherdriver@tokaglass.co.ke'),
+      ('00000000-0000-0000-0000-000000000007', 'sales2@tokaglass.co.ke')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO profiles (id, full_name, role, phone_number, is_active) VALUES
@@ -152,7 +157,8 @@ async function runDatabaseTests() {
       ('${salesId}', 'Grace Muthoni', 'salesperson', '+254700000003', true),
       ('${driverId}', 'David Ochieng', 'driver', '+254700000004', true),
       ('${collectorId}', 'John Collector', 'cash_collector', '+254700000005', true),
-      ('${otherDriverId}', 'Unassigned Driver', 'driver', '+254700000006', true)
+      ('${otherDriverId}', 'Unassigned Driver', 'driver', '+254700000006', true),
+      ('00000000-0000-0000-0000-000000000007', 'Second Salesperson', 'salesperson', '+254700000007', true)
     ON CONFLICT (id) DO UPDATE SET is_active = true;
   `);
 
@@ -200,7 +206,57 @@ async function runDatabaseTests() {
     }
   };
 
-  console.log('\n--- Suite 2: Caller Authentication & Vehicle Shift Enforcement ---');
+  const fleetGrantChecks = await db.query<any>(`
+    SELECT
+      has_function_privilege('anon', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS anon_create_shift,
+      has_function_privilege('authenticated', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS employee_create_shift,
+      has_function_privilege('service_role', 'public.create_vehicle_shift_assignment(text,text,numeric,text,text,text,uuid,uuid,date,timestamp with time zone)', 'EXECUTE') AS service_create_shift
+  `);
+  assert(fleetGrantChecks.rows[0].anon_create_shift === false, 'Anonymous users cannot create vehicle shifts');
+  assert(fleetGrantChecks.rows[0].employee_create_shift === true, 'Authenticated users can invoke the role-checked shift procedure');
+  assert(fleetGrantChecks.rows[0].service_create_shift === false, 'Service role cannot bypass the employee shift procedure');
+
+  console.log('\n--- Suite 2: Fleet Setup & Shift Assignment ---');
+  await setAuthUser(managerId);
+  const assignmentResult = await db.query<any>(`
+    SELECT create_vehicle_shift_assignment(
+      'KBC 456Y',
+      'Isuzu NQR 7-Tonne',
+      7.0,
+      'RT-02',
+      'Westlands - Parklands',
+      'Westlands and Parklands delivery route',
+      '${otherDriverId}',
+      '00000000-0000-0000-0000-000000000007',
+      (timezone('Africa/Nairobi', now()))::date,
+      now() - INTERVAL '1 minute'
+    ) AS result
+  `);
+  const createdShift = assignmentResult.rows[0].result;
+  assert(Boolean(createdShift.assignment_id), 'Fleet setup creates a vehicle shift assignment');
+  assert(Boolean(createdShift.stock_location_id), 'Fleet setup creates the vehicle stock location automatically');
+
+  await assertRejects(
+    db.query<any>(`
+      SELECT create_vehicle_shift_assignment(
+        'KBC 456Y', 'Isuzu NQR 7-Tonne', 7.0, 'RT-02', 'Westlands - Parklands', NULL,
+        '${otherDriverId}', '00000000-0000-0000-0000-000000000007',
+        (timezone('Africa/Nairobi', now()))::date, now() - INTERVAL '1 minute'
+      );
+    `),
+    'SHIFT_CONFLICT',
+    'The same vehicle and crew cannot receive overlapping active shifts'
+  );
+
+  await db.query<any>(`SELECT close_vehicle_shift('${createdShift.assignment_id}', now());`);
+  const closedShiftCheck = await db.query<any>(`
+    SELECT is_active, ended_at FROM vehicle_assignments WHERE id = '${createdShift.assignment_id}'
+  `);
+  assert(closedShiftCheck.rows[0].is_active === false && Boolean(closedShiftCheck.rows[0].ended_at), 'Manager can close a vehicle shift and record its end time');
+
+  await setAuthUser(null);
+
+  console.log('\n--- Suite 3: Caller Authentication & Vehicle Shift Enforcement ---');
   // 1. Unauthenticated execution rejected
   await setAuthUser(null);
   await assertRejects(
