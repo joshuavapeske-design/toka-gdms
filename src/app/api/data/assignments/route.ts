@@ -68,8 +68,9 @@ export async function GET() {
           created_at,
           vehicles (registration_plate, make_model),
           routes (name, code),
-          driver:driver_id (full_name),
-          salesperson:salesperson_id (full_name)
+          driver:profiles!vehicle_assignments_driver_id_fkey (full_name),
+          salesperson:profiles!vehicle_assignments_salesperson_id_fkey (full_name)
+          
         `)
         .eq('is_active', true)
         .eq('shift_date', new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date()))
