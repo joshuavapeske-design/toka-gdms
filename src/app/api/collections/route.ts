@@ -37,7 +37,7 @@ export async function GET() {
         collection_date,
         created_at,
         customers (name, account_number),
-        collector:collected_by (full_name)
+        collector:profiles!collections_collected_by_fkey (full_name)
       `)
       .order('created_at', { ascending: false });
 
