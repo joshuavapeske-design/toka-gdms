@@ -258,12 +258,18 @@ export async function POST(request: Request) {
       }
 
       // ── Shift Verification ───────────────────────────────────────────────
-      const { data: verifiedAssignment } = await supabase
+      let assignmentQuery = supabase
         .from('vehicle_assignments')
-        .select('id, is_active, driver_id, salesperson_id')
-        .eq('id', payload.vehicleAssignmentId)
-        .eq('is_active', true)
-        .maybeSingle();
+        .select('id, is_active, driver_id, salesperson_id, shift_date, started_at, ended_at')
+        .eq('id', payload.vehicleAssignmentId);
+
+      // A closed shift may be reconciled only for an offline delivery. The database
+      // RPC independently verifies deviceCapturedAt against the shift's real window.
+      if (!payload.isOfflineSubmission) {
+        assignmentQuery = assignmentQuery.eq('is_active', true);
+      }
+
+      const { data: verifiedAssignment } = await assignmentQuery.maybeSingle();
 
       if (!verifiedAssignment) {
         return NextResponse.json(
