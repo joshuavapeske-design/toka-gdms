@@ -132,7 +132,9 @@ export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
     if (record.syncStatus === 'syncing') {
       record.syncStatus = 'pending';
       record.errorMessage = 'Previous synchronization was interrupted; safe idempotent retry is available.';
-      await store.put(record);
+      // Queue the write immediately; avoid awaiting inside the transaction loop,
+      // which can allow IndexedDB to auto-commit between records.
+      void store.put(record);
     }
     if (record.syncStatus === 'pending') pending.push(record);
   }
