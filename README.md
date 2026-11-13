@@ -51,3 +51,4 @@ TOKA GDMS is a lightweight, mobile-first management system built to operate a fa
 - [`docs/SECURITY.md`](docs/SECURITY.md) — Threat models, anti-fraud defenses, tamper-proofing, realistic immutability boundaries, and credential isolation.
 - [`docs/TESTING.md`](docs/TESTING.md) — Expanded 15-scenario verification matrix, automated test frameworks, and complete mapping of all 22 Master Acceptance Criteria.
 - [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — Roadmap with anti-retrofit offline foundations, phased priorities, and testable Definition of Done criteria.
+- [`docs/STAGING_DEPLOYMENT.md`](docs/STAGING_DEPLOYMENT.md) — Isolated Supabase/Vercel staging setup, owner bootstrap, test workflow, and explicit release gate.
