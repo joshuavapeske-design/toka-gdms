@@ -122,7 +122,23 @@ export async function queueOfflineDelivery(delivery: QueuedOfflineDelivery): Pro
  */
 export async function getPendingDeliveries(): Promise<QueuedOfflineDelivery[]> {
   const db = await getOfflineDb();
-  return db.getAllFromIndex('outbox', 'by-status', 'pending');
+  const tx = db.transaction('outbox', 'readwrite');
+  const store = tx.objectStore('outbox');
+  const records = await store.getAll();
+  const pending: QueuedOfflineDelivery[] = [];
+
+  for (const record of records) {
+    // Recover records left in "syncing" when the tab/browser closed mid-request.
+    if (record.syncStatus === 'syncing') {
+      record.syncStatus = 'pending';
+      record.errorMessage = 'Previous synchronization was interrupted; safe idempotent retry is available.';
+      await store.put(record);
+    }
+    if (record.syncStatus === 'pending') pending.push(record);
+  }
+
+  await tx.done;
+  return pending;
 }
 
 export async function getOfflineOutboxStatusCounts(): Promise<{
@@ -158,6 +174,8 @@ export async function updateDeliverySyncStatus(
   if (item) {
     item.syncStatus = status;
     if (errorMessage) item.errorMessage = errorMessage;
+    else if (status === 'pending' || status === 'syncing' || status === 'synced') item.errorMessage = undefined;
+    if (status === 'syncing') item.retryCount = (item.retryCount || 0) + 1;
     if (status === 'synced') item.syncedAt = new Date().toISOString();
     await store.put(item);
   }
