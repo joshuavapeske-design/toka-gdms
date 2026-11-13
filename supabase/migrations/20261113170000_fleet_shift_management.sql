@@ -128,7 +128,8 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM vehicle_assignments
-    WHERE is_active = true AND shift_date = p_shift_date
+    WHERE shift_date = p_shift_date
+      AND (ended_at IS NULL OR ended_at > p_started_at)
       AND (vehicle_id = v_vehicle_id OR driver_id IN (p_driver_id, p_salesperson_id)
            OR salesperson_id IN (p_driver_id, p_salesperson_id))
   ) THEN
