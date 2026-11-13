@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   Truck, 
-  Package, 
   DollarSign, 
   AlertTriangle, 
   LayoutDashboard, 
   PlusCircle, 
-  Layers
+  Layers,
+  Calendar,
+  ShieldCheck,
+  Users
 } from 'lucide-react';
 import type { UserRole } from '@/types';
 
@@ -26,6 +28,9 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
     { href: '/deliveries/new', label: 'New Delivery', icon: PlusCircle, roles: ['owner', 'manager', 'salesperson', 'driver'] },
     { href: '/deliveries', label: 'Deliveries', icon: Truck, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
     { href: '/inventory', label: 'Stock (FSE)', icon: Layers, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
+    { href: '/assignments', label: 'Shifts', icon: Calendar, roles: ['owner', 'manager'] },
+    { href: '/remittances', label: 'Remittances', icon: ShieldCheck, roles: ['owner', 'manager', 'accountant'] },
+    { href: '/customers', label: 'Customers', icon: Users, roles: ['owner', 'manager', 'salesperson', 'accountant'] },
     { href: '/collections', label: 'Collections', icon: DollarSign, roles: ['owner', 'manager', 'cash_collector', 'accountant'] },
     { href: '/disputes', label: 'Disputes', icon: AlertTriangle, roles: ['owner', 'manager', 'accountant'] },
   ];
@@ -36,7 +41,7 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 lg:gap-6">
             <Link href="/" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white font-bold text-sm tracking-wider shadow-sm">
                 TK
@@ -49,7 +54,7 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
               </div>
             </Link>
 
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-1 overflow-x-auto py-1">
               {allowedLinks.map((link) => {
                 const Icon = link.icon;
                 const isActive = pathname === link.href;
@@ -57,13 +62,13 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
                       isActive
                         ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-3.5 h-3.5" />
                     <span>{link.label}</span>
                   </Link>
                 );
