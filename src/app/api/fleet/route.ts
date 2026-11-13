@@ -59,8 +59,9 @@ export async function GET() {
         id,shift_date,started_at,ended_at,is_active,
         vehicles(registration_plate,make_model),
         routes(code,name),
-        driver:driver_id(full_name),
-        salesperson:salesperson_id(full_name)
+        driver:profiles!vehicle_assignments_driver_id_fkey(full_name),
+        salesperson:profiles!vehicle_assignments_salesperson_id_fkey(full_name)
+        
       `).order('shift_date', { ascending: false }).order('started_at', { ascending: false }).limit(100),
     ]);
 
