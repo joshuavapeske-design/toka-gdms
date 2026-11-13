@@ -656,24 +656,13 @@ export default function NewDeliveryPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Unit Price (KES)</label>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Catalog Unit Price (KES)</label>
                     <input
                       type="number"
-                      min={0}
-                      step={0.01}
                       value={item.appliedUnitPrice}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        updateItem(item.key, {
-                          appliedUnitPrice: val,
-                          isSpecialPrice: val !== item.officialUnitPrice,
-                        });
-                      }}
-                      className={`w-full px-2 py-1.5 text-sm border rounded-md ${
-                        item.isSpecialPrice
-                          ? 'bg-amber-50 border-amber-300 text-amber-800'
-                          : 'bg-white border-slate-200'
-                      }`}
+                      readOnly
+                      aria-readonly="true"
+                      className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md bg-slate-50 text-slate-700"
                     />
                   </div>
                   <div>
@@ -684,14 +673,9 @@ export default function NewDeliveryPage() {
                   </div>
                 </div>
 
-                {/* FSE indicator */}
+                        {/* FSE indicator */}
                 <div className="mt-1.5 text-[10px] text-slate-500">
                   FSE: {calculateFse(item.sellingUnit, item.quantity).toFixed(1)}
-                  {item.isSpecialPrice && (
-                    <span className="ml-2 text-amber-600 font-semibold">
-                      ⚠ Non-standard price (official: {formatKES(item.officialUnitPrice)})
-                    </span>
-                  )}
                 </div>
               </div>
             ))}
