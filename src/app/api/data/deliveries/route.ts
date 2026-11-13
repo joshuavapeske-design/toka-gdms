@@ -32,7 +32,7 @@ export async function GET() {
         outstanding_balance,
         created_at,
         customers (name),
-        creator:created_by (full_name)
+        profiles:created_by (full_name)
       `)
       .order('created_at', { ascending: false })
       .limit(250);
@@ -47,7 +47,7 @@ export async function GET() {
       deliveryReference: item.delivery_reference,
       customerId: item.customer_id,
       customerName: item.customers?.name || 'Unknown customer',
-      createdByName: item.creator?.full_name || 'Employee',
+      createdByName: item.profiles?.full_name || 'Employee',
       operationalStatus: item.operational_status,
       paymentStatus: item.payment_status,
       customerConfirmationStatus: item.customer_confirmation_status,
