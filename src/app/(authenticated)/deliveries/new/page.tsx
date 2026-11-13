@@ -403,12 +403,37 @@ export default function NewDeliveryPage() {
           setTimeout(() => router.push('/deliveries'), 1500);
           return;
         } else {
-          // Explicit server rejection (HTTP 4xx/5xx) — show actual server validation error
           const errorData = await response.json().catch(() => ({}));
-          setSubmitResult({
-            success: false,
-            message: errorData.error || `Server rejected delivery (HTTP ${response.status})`,
-          });
+          const serverMessage = errorData.error || `Server returned HTTP ${response.status}`;
+          const retryable =
+            response.status === 408 ||
+            response.status === 425 ||
+            response.status === 429 ||
+            response.status >= 500;
+
+          if (retryable) {
+            // The server may have committed the transaction before the response
+            // was lost. Keep the original online payload and clientTxId unchanged;
+            // a retry must have the same canonical idempotency hash.
+            deliveryPayload.syncStatus = 'pending';
+            deliveryPayload.errorMessage = serverMessage;
+            try {
+              await queueOfflineDelivery(deliveryPayload);
+              setSubmitResult({
+                success: true,
+                message: `Delivery ${deliveryReference} has an uncertain server response. The original transaction was saved locally for safe idempotent reconciliation; do not create it again.`,
+              });
+              setTimeout(() => router.push('/deliveries'), 1500);
+            } catch (storageError: any) {
+              setSubmitResult({
+                success: false,
+                message: `The server response was uncertain and local recovery storage failed: ${storageError?.message || 'IndexedDB error'}. Do not resubmit this delivery; contact a manager to check the delivery ledger first.`,
+              });
+            }
+            return;
+          }
+
+          setSubmitResult({ success: false, message: serverMessage });
           return;
         }
       }
@@ -424,19 +449,22 @@ export default function NewDeliveryPage() {
       setTimeout(() => router.push('/deliveries'), 1500);
     } catch (err: any) {
       if (!navigator.onLine || err.name === 'TypeError') {
-        deliveryPayload.isOfflineSubmission = true;
+        // A request that times out after starting may already have reached the
+        // server. Do not flip isOfflineSubmission: preserving the exact payload
+        // ensures retries use the same clientTxId and canonical hash.
         deliveryPayload.syncStatus = 'pending';
+        deliveryPayload.errorMessage = 'Network response was interrupted; retrying the original transaction safely.';
         try {
           await queueOfflineDelivery(deliveryPayload);
           setSubmitResult({
             success: true,
-            message: `Network offline. Delivery ${deliveryReference} saved locally and queued for synchronization.`,
+            message: `Network response interrupted. Delivery ${deliveryReference} was saved locally with its original transaction identity for safe reconciliation; do not create it again.`,
           });
           setTimeout(() => router.push('/deliveries'), 1500);
         } catch (dbErr: any) {
           setSubmitResult({
             success: false,
-            message: `IndexedDB error: ${dbErr.message || 'Failed to save offline record'}`,
+            message: `The request may have reached the server, but IndexedDB recovery failed: ${dbErr.message || 'storage error'}. Do not resubmit; ask a manager to check the delivery ledger first.`,
           });
         }
       } else {
