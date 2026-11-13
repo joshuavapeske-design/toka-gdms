@@ -9,7 +9,8 @@ import {
   AlertTriangle, 
   LayoutDashboard, 
   PlusCircle, 
-  Layers
+  Layers,
+  Route
 } from 'lucide-react';
 import type { UserRole } from '@/types';
 
@@ -23,6 +24,7 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
 
   const navLinks = [
     { href: '/', label: 'Overview', icon: LayoutDashboard, roles: ['owner', 'manager', 'accountant', 'salesperson'] },
+    { href: '/fleet', label: 'Fleet & Shifts', icon: Route, roles: ['owner', 'manager'] },
     { href: '/deliveries/new', label: 'New Delivery', icon: PlusCircle, roles: ['owner', 'manager', 'salesperson', 'driver'] },
     { href: '/deliveries', label: 'Deliveries', icon: Truck, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
     { href: '/inventory', label: 'Stock (FSE)', icon: Layers, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
