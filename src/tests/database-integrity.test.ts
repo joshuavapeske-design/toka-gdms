@@ -90,6 +90,37 @@ async function runDatabaseTests() {
   assert(grants.service_sms_processor === true, 'Service role can process provider SMS callbacks');
   assert(grants.authenticated_delivery_submit === true, 'Authenticated employees can execute the delivery RPC');
 
+  const readPolicyChecks = await db.query<any>(`
+    SELECT
+      has_table_privilege('anon', 'public.customers', 'SELECT') AS anon_customers,
+      has_table_privilege('anon', 'public.customer_contacts', 'SELECT') AS anon_contacts,
+      has_table_privilege('anon', 'public.inventory_balances', 'SELECT') AS anon_inventory,
+      has_table_privilege('anon', 'public.deliveries', 'SELECT') AS anon_deliveries,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'customers'
+          AND policyname = 'customers_select_authenticated'
+          AND 'authenticated' = ANY(roles)
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS customer_policy_role_scoped,
+      EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'inventory_balances'
+          AND policyname = 'inventory_balances_select_authenticated'
+          AND 'authenticated' = ANY(roles)
+          AND qual ILIKE '%auth.get_user_role%'
+      ) AS inventory_policy_role_scoped
+  `);
+  const readPolicies = readPolicyChecks.rows[0];
+  assert(readPolicies.anon_customers === false, 'Anonymous users have no direct SELECT grant on customer records');
+  assert(readPolicies.anon_contacts === false, 'Anonymous users have no direct SELECT grant on customer contact records');
+  assert(readPolicies.anon_inventory === false, 'Anonymous users have no direct SELECT grant on inventory balances');
+  assert(readPolicies.anon_deliveries === false, 'Anonymous users have no direct SELECT grant on delivery records');
+  assert(readPolicies.customer_policy_role_scoped === true, 'Customer reads require an authenticated employee role');
+  assert(readPolicies.inventory_policy_role_scoped === true, 'Inventory reads require an authorized employee role');
+
   // Verify inventory_balances table exists
   const tableCheck = await db.query<any>(`
     SELECT table_name FROM information_schema.tables 
