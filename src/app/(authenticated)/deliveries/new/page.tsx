@@ -337,21 +337,34 @@ export default function NewDeliveryPage() {
         });
 
         if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.simulated) {
+          const data = await response.json().catch(() => ({}));
+          if (!data.success) {
+            setSubmitResult({ success: false, message: data.error || 'The server did not accept this delivery.' });
+            return;
+          }
+          if (data.simulated) {
             deliveryPayload.syncStatus = 'local_saved';
-            await queueOfflineDelivery(deliveryPayload);
-            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was saved in this browser only and was NOT saved to the TOKA business database.` });
+            try {
+              await queueOfflineDelivery(deliveryPayload);
+            } catch (storageError) {
+              console.error('[GDMS DEMO OUTBOX] Browser-only demo record could not be retained locally:', storageError);
+            }
+            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was ${'saved in this browser only'} and was NOT saved to the TOKA business database.` });
             return;
           }
-          if (data.success) {
-            deliveryPayload.syncStatus = 'synced';
-            deliveryPayload.syncedAt = new Date().toISOString();
+          deliveryPayload.syncStatus = 'synced';
+          deliveryPayload.syncedAt = new Date().toISOString();
+          try {
             await queueOfflineDelivery(deliveryPayload);
-            setSubmitResult({ success: true, message: `Delivery ${deliveryReference} submitted successfully.` });
-            setTimeout(() => router.push('/deliveries'), 1500);
-            return;
+          } catch (storageError) {
+            // The server transaction has already committed. A local cache failure
+            // must never tell the user that the business delivery failed or invite
+            // them to submit a duplicate transaction.
+            console.warn('[GDMS DELIVERY CACHE] Delivery committed, but local history cache could not be updated:', storageError);
           }
+          setSubmitResult({ success: true, message: `Delivery ${deliveryReference} submitted successfully.` });
+          setTimeout(() => router.push('/deliveries'), 1500);
+          return;
         } else {
           // Explicit server rejection (HTTP 4xx/5xx) — show actual server validation error
           const errorData = await response.json().catch(() => ({}));
