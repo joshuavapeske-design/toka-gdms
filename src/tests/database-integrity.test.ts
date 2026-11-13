@@ -81,15 +81,23 @@ async function runDatabaseTests() {
   await db.exec(sql4);
   assert(true, '20261113170000_fleet_shift_management.sql applied cleanly');
 
+  const sql5 = fs.readFileSync(path.resolve('supabase/migrations/20261113173000_stock_movement_security.sql'), 'utf8');
+  await db.exec(sql5);
+  assert(true, '20261113173000_stock_movement_security.sql applied cleanly');
+
   const privilegeChecks = await db.query<any>(`
     SELECT
       has_function_privilege('anon', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS anon_stock_receive,
+      has_function_privilege('service_role', 'public.receive_stock_warehouse(uuid,uuid,integer,integer,text)', 'EXECUTE') AS service_stock_receive,
+      has_function_privilege('authenticated', 'public.dispatch_stock_vehicle(uuid,uuid,uuid,integer,integer,text)', 'EXECUTE') AS authenticated_stock_dispatch,
       has_function_privilege('authenticated', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS authenticated_sms_processor,
       has_function_privilege('service_role', 'public.process_inbound_sms_atomic(text,text,text)', 'EXECUTE') AS service_sms_processor,
       has_function_privilege('authenticated', 'public.submit_delivery_atomic(text,uuid,text,uuid,uuid,uuid,numeric,numeric,numeric,numeric,numeric,payment_status_enum,numeric,numeric,numeric,timestamp with time zone,boolean,text,jsonb,jsonb,uuid)', 'EXECUTE') AS authenticated_delivery_submit
   `);
   const grants = privilegeChecks.rows[0];
   assert(grants.anon_stock_receive === false, 'Anonymous users cannot execute stock receipt RPC');
+  assert(grants.service_stock_receive === false, 'Service role cannot bypass the authenticated manager stock receipt policy');
+  assert(grants.authenticated_stock_dispatch === true, 'Authenticated role can invoke stock dispatch subject to database role checks');
   assert(grants.authenticated_sms_processor === false, 'Authenticated users cannot forge provider SMS RPC calls');
   assert(grants.service_sms_processor === true, 'Service role can process provider SMS callbacks');
   assert(grants.authenticated_delivery_submit === true, 'Authenticated employees can execute the delivery RPC');
@@ -241,6 +249,10 @@ async function runDatabaseTests() {
     VALUES ('${truckLocationId}', 'Truck KBZ 123X Mobile Bay', 'truck', '${vehicleId}', true)
     ON CONFLICT (name) DO NOTHING;
 
+    INSERT INTO stock_locations (id, name, location_type, vehicle_id, is_active)
+    VALUES ('${warehouseId}', 'Main Test Warehouse', 'warehouse', NULL, true)
+    ON CONFLICT (name) DO NOTHING;
+
     INSERT INTO customers (id, account_number, name, primary_phone, delivery_area, is_credit_eligible, credit_limit, is_active, created_by)
     VALUES
       ('44444444-4444-4444-4444-444444444401', 'CUST-001', 'Kariuki Glass & Hardware', '+254712345678', 'Gikomba Market', true, 50000.00, true, '${ownerId}'),
@@ -261,6 +273,48 @@ async function runDatabaseTests() {
       await db.exec(`SET request.jwt.claim.sub = '';`);
     }
   };
+
+  // Stock procedures must reject non-management roles even when called
+  // directly through PostgREST, without relying on the API route guard.
+  await setAuthUser(salesId);
+  await assertRejects(
+    db.query<any>(`SELECT receive_stock_warehouse('${prod4mm}'::uuid, '${warehouseId}'::uuid, 2, 0, 'unauthorized receipt test');`),
+    'ROLE_NOT_AUTHORIZED',
+    'Salesperson cannot call warehouse receipt RPC directly'
+  );
+  await assertRejects(
+    db.query<any>(`SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 1, 0, 'unauthorized dispatch test');`),
+    'ROLE_NOT_AUTHORIZED',
+    'Salesperson cannot call vehicle dispatch RPC directly'
+  );
+
+  await setAuthUser(managerId);
+  const receivedStock = await db.query<any>(`
+    SELECT receive_stock_warehouse('${prod4mm}'::uuid, '${warehouseId}'::uuid, 10, 2, 'Test opening receipt') AS result;
+  `);
+  assert(receivedStock.rows[0].result.success === true, 'Manager can receive warehouse stock');
+  const dispatchedStock = await db.query<any>(`
+    SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 4, 1, 'Test truck loading') AS result;
+  `);
+  assert(dispatchedStock.rows[0].result.success === true, 'Manager can dispatch stock to an active vehicle location');
+
+  const stockBalances = await db.query<any>(`
+    SELECT
+      (SELECT full_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${warehouseId}') AS warehouse_full,
+      (SELECT half_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${warehouseId}') AS warehouse_half,
+      (SELECT full_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${truckLocationId}') AS vehicle_full,
+      (SELECT half_sheets FROM inventory_balances WHERE product_id = '${prod4mm}' AND stock_location_id = '${truckLocationId}') AS vehicle_half
+  `);
+  assert(stockBalances.rows[0].warehouse_full === 6 && stockBalances.rows[0].warehouse_half === 1, 'Warehouse balance matches the received less dispatched physical sheets');
+  assert(stockBalances.rows[0].vehicle_full === 4 && stockBalances.rows[0].vehicle_half === 1, 'Vehicle balance matches the dispatched physical sheets');
+
+  await assertRejects(
+    db.query<any>(`SELECT dispatch_stock_vehicle('${prod4mm}'::uuid, '${warehouseId}'::uuid, '${truckLocationId}'::uuid, 7, 0, 'Excess dispatch test');`),
+    'INSUFFICIENT_WAREHOUSE_STOCK',
+    'Vehicle dispatch cannot exceed the warehouse physical stock'
+  );
+
+  await setAuthUser(null);
 
   // Exercise the policies as the actual Supabase database roles, not only as the
   // migration owner. This validates role-granted table access plus RLS filtering.
