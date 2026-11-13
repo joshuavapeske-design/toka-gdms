@@ -612,6 +612,23 @@ async function runDatabaseTests() {
     'Reusing clientTxId with modified payload rejected as tampering'
   );
 
+  // A network response may be lost after the atomic transaction commits. A later
+  // exact retry must still return the existing delivery after its shift has closed.
+  await setAuthUser(managerId);
+  await db.query<any>(`SELECT close_vehicle_shift('${assignmentId}', now());`);
+  await setAuthUser(driverId);
+  const closedShiftReplay = await db.query<any>(`
+    SELECT submit_delivery_atomic(
+      'GD-202611-0030', '${txIdIdempotency}', '${canonicalHashReal}',
+      '${custEligibleId}', '${driverId}', '${assignmentId}',
+      3200.00, 0.00, 3200.00, 3200.00, 0.00, 'fully_paid',
+      NULL, NULL, NULL, NULL, false, 'Idempotency test',
+      '[{"productId":"${prod4mm}","sellingUnit":"FULL_SHEET","quantity":1,"appliedUnitPrice":3200.00}]'::jsonb,
+      '[{"channel":"cash","declaredAmount":3200.00}]'::jsonb
+    );
+  `);
+  assert(closedShiftReplay.rows[0].submit_delivery_atomic.duplicate === true, 'Exact committed retry is acknowledged even after the vehicle shift closes');
+
   console.log('\n--- Suite 7: Collections, Multi-Invoice Allocations & Turnover ---');
   // 1. Record customer collection
   await setAuthUser(collectorId);
