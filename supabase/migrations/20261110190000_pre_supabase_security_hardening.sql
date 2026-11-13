@@ -697,6 +697,37 @@ BEGIN
         RAISE EXCEPTION 'ROLE_NOT_AUTHORIZED: Role % is not authorized to submit deliveries', v_caller_role;
     END IF;
 
+    -- Serialize requests sharing one client transaction ID. An exact replay
+    -- must return the committed delivery before current shift/stock state checks;
+    -- otherwise a lost HTTP response followed by shift closure could strand a
+    -- transaction that was already committed.
+    IF p_client_tx_id IS NULL THEN
+        RAISE EXCEPTION 'CLIENT_TX_ID_REQUIRED: A stable client transaction ID is required';
+    END IF;
+    IF p_payload_hash IS NULL OR p_payload_hash = '' THEN
+        RAISE EXCEPTION 'PAYLOAD_HASH_REQUIRED: Canonical SHA-256 payload hash is required';
+    END IF;
+
+    PERFORM pg_advisory_xact_lock(hashtextextended('toka:delivery:' || p_client_tx_id::text, 0));
+
+    SELECT id, payload_hash INTO v_existing_id, v_existing_hash
+    FROM deliveries
+    WHERE client_tx_id = p_client_tx_id;
+
+    IF v_existing_id IS NOT NULL THEN
+        IF v_existing_hash IS DISTINCT FROM p_payload_hash THEN
+            RAISE EXCEPTION 'IDEMPOTENCY_PAYLOAD_MISMATCH: Existing delivery with clientTxId % has differing payload hash', p_client_tx_id;
+        END IF;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'duplicate', true,
+            'delivery_id', v_existing_id,
+            'delivery_reference', p_delivery_reference,
+            'message', 'Delivery was already synchronized.'
+        );
+    END IF;
+
     -- 2. VEHICLE SHIFT ASSIGNMENT VERIFICATION
     SELECT va.id, va.vehicle_id, va.driver_id, va.salesperson_id, va.is_active,
            va.shift_date, va.started_at, va.ended_at,
