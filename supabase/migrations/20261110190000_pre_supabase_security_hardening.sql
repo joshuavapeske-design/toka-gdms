@@ -2031,6 +2031,42 @@ REVOKE ALL ON TABLE
   discount_approval_requests
 FROM anon;
 
+-- Make the intended authenticated read surface explicit rather than relying on
+-- project-wide default grants. Row-level policies above still determine each row.
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT SELECT ON TABLE
+  customers,
+  customer_contacts,
+  products,
+  product_categories,
+  customer_prices,
+  vehicles,
+  routes,
+  vehicle_assignments,
+  stock_locations,
+  inventory_balances,
+  stock_transformations,
+  stock_movements,
+  deliveries,
+  delivery_items,
+  payment_declarations,
+  collections,
+  payment_allocations,
+  payment_reversals,
+  employee_turnovers,
+  inbound_sms_messages,
+  customer_confirmations,
+  customer_confirmation_events,
+  customer_disputes,
+  notifications,
+  location_samples,
+  audit_logs,
+  transaction_corrections,
+  credit_accounts,
+  price_approval_requests,
+  discount_approval_requests
+TO authenticated;
+
 -- Replace permissive catalogue policies inherited from the first RLS migration.
 DROP POLICY IF EXISTS "customers_select_policy" ON customers;
 CREATE POLICY customers_select_authenticated ON customers
