@@ -19,7 +19,7 @@
 | Database security hardening | Additional RLS, trigger and function-grant hardening committed | Execute database tests and verify as real Supabase roles |
 | Customer directory and creation | Owner/manager API and UI implemented | Create and read customers in staging |
 | Fleet and shift setup | Owner/manager UI and atomic RPC added | Create, close and reassign shifts in staging |
-| Warehouse receiving and vehicle dispatch | Owner/manager UI and atomic RPC connected | Verify movement ledger and balances in staging |
+| Warehouse receiving and vehicle dispatch | Owner/manager UI and database-enforced role/location checks added | Apply fifth migration and verify physical movement ledger/balances in staging |
 | Delivery capture and stock deduction | Implemented | Test full/half sheets, credit, payments and transaction persistence |
 | Delivery ledger and dashboard | Connected to database APIs; local outbox shown separately | Verify actual server records and totals |
 | Collections and invoice allocation | API/UI implemented | Verify partial and multi-invoice allocation against staging data |
