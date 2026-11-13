@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Truck, PlusCircle, Filter, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { formatKES } from '@/lib/decimal';
+import { getOfflineDb, type QueuedOfflineDelivery } from '@/lib/offline/db';
 
 interface DeliveryRecord {
   id: string;
@@ -46,6 +47,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function DeliveriesPage() {
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [localRecords, setLocalRecords] = useState<QueuedOfflineDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [operationalFilter, setOperationalFilter] = useState('');
@@ -64,6 +66,15 @@ export default function DeliveriesPage() {
       setDeliveries(result.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load delivery records.');
+    }
+
+    try {
+      const db = await getOfflineDb();
+      const records = await db.getAll('outbox');
+      setLocalRecords(records.filter((record) => record.syncStatus !== 'synced')
+        .sort((a, b) => b.deviceCapturedAt.localeCompare(a.deviceCapturedAt)));
+    } catch {
+      // IndexedDB is optional; remote delivery records remain available without it.
     } finally {
       setLoading(false);
     }
@@ -124,6 +135,45 @@ export default function DeliveriesPage() {
         <div className="mb-4 flex items-start gap-2 p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs">
           <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
         </div>
+      )}
+
+      {localRecords.length > 0 && (
+        <section className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600">This Device — Not Yet in the Business Database</h2>
+            <span className="text-[10px] text-slate-400">{localRecords.length} local record{localRecords.length === 1 ? '' : 's'}</span>
+          </div>
+          <div className="space-y-2">
+            {localRecords.map((record) => {
+              const label = record.syncStatus === 'local_saved' ? 'Browser only' :
+                record.syncStatus === 'needs_review' ? 'Needs review' :
+                record.syncStatus === 'failed' ? 'Sync failed' : 'Pending sync';
+              const tone = record.syncStatus === 'needs_review' || record.syncStatus === 'failed'
+                ? 'bg-red-50 border-red-200 text-red-700'
+                : 'bg-amber-50 border-amber-200 text-amber-800';
+              return (
+                <div key={record.clientTxId} className="bg-white border border-slate-200 rounded-xl p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-bold text-slate-900">{record.deliveryReference}</div>
+                      <div className="text-xs text-slate-600 mt-0.5">{record.customerName || 'Customer not named'}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Captured {new Date(record.deviceCapturedAt).toLocaleString('en-KE')}</div>
+                    </div>
+                    <div className="sm:text-right">
+                      <div className="text-sm font-extrabold text-slate-900">{formatKES(record.totalAmount)}</div>
+                      <span className={`inline-flex mt-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${tone}`}>{label}</span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-500">
+                    {record.errorMessage || (record.syncStatus === 'local_saved'
+                      ? 'Saved in this browser only. It has not been recorded in the shared TOKA database.'
+                      : 'This record remains in the local outbox and has not been confirmed as synchronized.')}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {loading ? (
