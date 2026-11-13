@@ -12,7 +12,20 @@ export interface SyncResult {
 /**
  * Idempotently syncs all pending offline deliveries to the server
  */
+let activeSync: Promise<SyncResult> | null = null;
+
 export async function syncPendingDeliveries(): Promise<SyncResult> {
+  if (activeSync) return activeSync;
+  const current = performSync();
+  activeSync = current;
+  try {
+    return await current;
+  } finally {
+    if (activeSync === current) activeSync = null;
+  }
+}
+
+async function performSync(): Promise<SyncResult> {
   const pending = await getPendingDeliveries();
   const result: SyncResult = {
     totalProcessed: pending.length,
@@ -33,7 +46,7 @@ export async function syncPendingDeliveries(): Promise<SyncResult> {
         body: JSON.stringify(delivery),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok && data.success && data.simulated) {
         const message = 'Demo simulation only: this delivery was not persisted to the business database.';
@@ -48,9 +61,20 @@ export async function syncPendingDeliveries(): Promise<SyncResult> {
         const needsReview =
           response.status === 409 ||
           /INSUFFICIENT_STOCK|INVALID_ASSIGNMENT|INACTIVE_ASSIGNMENT|UNAUTHORIZED_SHIFT|CREDIT_NOT_AUTHORIZED|CREDIT_LIMIT_EXCEEDED|UNAUTHORIZED_PRICE|DISCOUNT_NOT_AUTHORIZED|VEHICLE_STOCK_LOCATION_NOT_FOUND|CUSTOMER_NOT_FOUND|PRODUCT_NOT_FOUND/i.test(errorMsg);
-        await updateDeliverySyncStatus(delivery.clientTxId, needsReview ? 'needs_review' : 'failed', errorMsg);
+        const retryable =
+          response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status === 401 ||
+          response.status === 403 ||
+          response.status >= 500;
+        const nextStatus = needsReview ? 'needs_review' : retryable ? 'pending' : 'failed';
+        await updateDeliverySyncStatus(delivery.clientTxId, nextStatus, errorMsg);
         result.failureCount++;
-        result.errors.push({ clientTxId: delivery.clientTxId, error: needsReview ? `Needs review: ${errorMsg}` : errorMsg });
+        result.errors.push({
+          clientTxId: delivery.clientTxId,
+          error: needsReview ? `Needs review: ${errorMsg}` : retryable ? `Retry pending: ${errorMsg}` : errorMsg,
+        });
       }
     } catch (err: any) {
       const errorMsg = err.message || 'Network request failed';
