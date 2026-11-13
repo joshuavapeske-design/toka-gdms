@@ -339,7 +339,9 @@ export default function NewDeliveryPage() {
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.simulated) {
-            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was simulated and was NOT saved to the TOKA business database.` });
+            deliveryPayload.syncStatus = 'local_saved';
+            await queueOfflineDelivery(deliveryPayload);
+            setSubmitResult({ success: true, message: `DEMO ONLY: Delivery ${deliveryReference} was saved in this browser only and was NOT saved to the TOKA business database.` });
             return;
           }
           if (data.success) {
