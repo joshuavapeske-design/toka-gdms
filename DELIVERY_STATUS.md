@@ -22,7 +22,7 @@
 | Warehouse receiving and vehicle dispatch | Owner/manager UI and database-enforced role/location checks added | Apply fifth migration and verify physical movement ledger/balances in staging |
 | Delivery capture and stock deduction | Implemented | Test full/half sheets, credit, payments and transaction persistence |
 | Delivery ledger and dashboard | Connected to database APIs; local outbox shown separately | Verify actual server records and totals |
-| Collections and invoice allocation | API/UI implemented | Verify partial and multi-invoice allocation against staging data |
+| Collections and invoice allocation | API/UI implemented; Nairobi business date applied to financial RPCs | Verify partial and multi-invoice allocation and turnover dates against staging data |
 | Disputes | SMS state machine and management UI implemented | Test with authenticated webhook and staging records |
 | Offline outbox | IndexedDB status states distinguish pending, needs-review and browser-only records | Browser offline/reconnect and stale-record acceptance tests |
 | Outbound SMS | Provider integration and protected dispatcher endpoint implemented | Provider credentials and explicit staging delivery test required |
