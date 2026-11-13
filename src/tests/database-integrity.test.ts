@@ -228,7 +228,7 @@ async function runDatabaseTests() {
       'Westlands and Parklands delivery route',
       '${otherDriverId}',
       '00000000-0000-0000-0000-000000000007',
-      (timezone('Africa/Nairobi', now()))::date,
+      (timezone('Africa/Nairobi', now() - INTERVAL '1 minute'))::date,
       now() - INTERVAL '1 minute'
     ) AS result
   `);
@@ -241,7 +241,7 @@ async function runDatabaseTests() {
       SELECT create_vehicle_shift_assignment(
         'KBC 456Y', 'Isuzu NQR 7-Tonne', 7.0, 'RT-02', 'Westlands - Parklands', NULL,
         '${otherDriverId}', '00000000-0000-0000-0000-000000000007',
-        (timezone('Africa/Nairobi', now()))::date, now() - INTERVAL '1 minute'
+        (timezone('Africa/Nairobi', now() - INTERVAL '1 minute'))::date, now() - INTERVAL '1 minute'
       );
     `),
     'SHIFT_CONFLICT',
@@ -254,6 +254,23 @@ async function runDatabaseTests() {
   `);
   assert(closedShiftCheck.rows[0].is_active === false && Boolean(closedShiftCheck.rows[0].ended_at), 'Manager can close a vehicle shift and record its end time');
 
+  const reassignmentResult = await db.query<any>(`
+    SELECT create_vehicle_shift_assignment(
+      'KBC 456Y',
+      'Isuzu NQR 7-Tonne',
+      7.0,
+      'RT-02',
+      'Westlands - Parklands',
+      NULL,
+      '${otherDriverId}',
+      '00000000-0000-0000-0000-000000000007',
+      (timezone('Africa/Nairobi', now() + INTERVAL '30 seconds'))::date,
+      now() + INTERVAL '30 seconds'
+    ) AS result
+  `);
+  assert(Boolean(reassignmentResult.rows[0].result.assignment_id), 'Vehicle and crew can be reassigned after the previous shift ends');
+
+  await db.query<any>(`SELECT close_vehicle_shift('${reassignmentResult.rows[0].result.assignment_id}', now() + INTERVAL '1 minute');`);
   await setAuthUser(null);
 
   console.log('\n--- Suite 3: Caller Authentication & Vehicle Shift Enforcement ---');
