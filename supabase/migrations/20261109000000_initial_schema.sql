@@ -89,12 +89,12 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_active ON profiles(is_active);
 
 -- Helper function to fetch role securely
-CREATE OR REPLACE FUNCTION auth.get_user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS user_role_enum 
 LANGUAGE sql 
 STABLE 
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = public, auth, pg_temp
 AS $$
     SELECT role FROM public.profiles WHERE id = auth.uid() AND is_active = true;
 $$;

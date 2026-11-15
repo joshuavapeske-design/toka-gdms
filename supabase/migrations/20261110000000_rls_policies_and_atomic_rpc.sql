@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS customer_confirmation_events (
 CREATE INDEX IF NOT EXISTS idx_conf_events_deliv ON customer_confirmation_events(delivery_id);
 
 -- 2. SECURE ROLE HELPER FUNCTION
-CREATE OR REPLACE FUNCTION auth.get_user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS user_role_enum 
 LANGUAGE sql 
 STABLE 
@@ -56,9 +56,9 @@ AS $$
     SELECT role FROM public.profiles WHERE id = auth.uid() AND is_active = true;
 $$;
 
-REVOKE EXECUTE ON FUNCTION auth.get_user_role() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION auth.get_user_role() TO authenticated;
-GRANT EXECUTE ON FUNCTION auth.get_user_role() TO service_role;
+REVOKE EXECUTE ON FUNCTION public.get_user_role() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_user_role() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_role() TO service_role;
 
 -- ============================================================================
 -- 3. PRIVILEGE ESCALATION & IMMUTABILITY TRIGGERS
@@ -212,45 +212,45 @@ ALTER TABLE transaction_corrections ENABLE ROW LEVEL SECURITY;
 -- PROFILES
 DROP POLICY IF EXISTS "profiles_select_policy" ON profiles;
 CREATE POLICY "profiles_select_policy" ON profiles
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant') OR id = auth.uid());
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant') OR id = auth.uid());
 
 DROP POLICY IF EXISTS "profiles_insert_owner" ON profiles;
 CREATE POLICY "profiles_insert_owner" ON profiles
-FOR INSERT WITH CHECK (auth.get_user_role() = 'owner');
+FOR INSERT WITH CHECK (public.get_user_role() = 'owner');
 
 DROP POLICY IF EXISTS "profiles_update_policy" ON profiles;
 CREATE POLICY "profiles_update_policy" ON profiles
-FOR UPDATE USING (auth.get_user_role() = 'owner' OR id = auth.uid());
+FOR UPDATE USING (public.get_user_role() = 'owner' OR id = auth.uid());
 
 -- CUSTOMERS & CONTACTS
 DROP POLICY IF EXISTS "customers_select_policy" ON customers;
 CREATE POLICY "customers_select_policy" ON customers FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "customers_insert_policy" ON customers;
-CREATE POLICY "customers_insert_policy" ON customers FOR INSERT WITH CHECK (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customers_insert_policy" ON customers FOR INSERT WITH CHECK (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "customers_update_policy" ON customers;
-CREATE POLICY "customers_update_policy" ON customers FOR UPDATE USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customers_update_policy" ON customers FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "customer_contacts_select" ON customer_contacts;
 CREATE POLICY "customer_contacts_select" ON customer_contacts FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "customer_contacts_modify" ON customer_contacts;
-CREATE POLICY "customer_contacts_modify" ON customer_contacts FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customer_contacts_modify" ON customer_contacts FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 -- CREDIT ACCOUNTS
 DROP POLICY IF EXISTS "credit_accounts_select" ON credit_accounts;
 CREATE POLICY "credit_accounts_select" ON credit_accounts FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "credit_accounts_update" ON credit_accounts;
-CREATE POLICY "credit_accounts_update" ON credit_accounts FOR UPDATE USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+CREATE POLICY "credit_accounts_update" ON credit_accounts FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 -- PRODUCTS & CATALOG
 DROP POLICY IF EXISTS "products_select_all" ON products;
 CREATE POLICY "products_select_all" ON products FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "products_modify_owner_manager" ON products;
-CREATE POLICY "products_modify_owner_manager" ON products FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "products_modify_owner_manager" ON products FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "categories_select_all" ON product_categories;
 CREATE POLICY "categories_select_all" ON product_categories FOR SELECT USING (true);
@@ -259,12 +259,12 @@ DROP POLICY IF EXISTS "customer_prices_select" ON customer_prices;
 CREATE POLICY "customer_prices_select" ON customer_prices FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "customer_prices_modify" ON customer_prices;
-CREATE POLICY "customer_prices_modify" ON customer_prices FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customer_prices_modify" ON customer_prices FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 -- PRICE APPROVAL REQUESTS
 DROP POLICY IF EXISTS "price_approvals_select" ON price_approval_requests;
 CREATE POLICY "price_approvals_select" ON price_approval_requests
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant') OR requested_by = auth.uid());
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant') OR requested_by = auth.uid());
 
 DROP POLICY IF EXISTS "price_approvals_insert" ON price_approval_requests;
 CREATE POLICY "price_approvals_insert" ON price_approval_requests
@@ -272,33 +272,33 @@ FOR INSERT WITH CHECK (requested_by = auth.uid());
 
 DROP POLICY IF EXISTS "price_approvals_update" ON price_approval_requests;
 CREATE POLICY "price_approvals_update" ON price_approval_requests
-FOR UPDATE USING (auth.get_user_role() IN ('owner', 'manager') AND requested_by != auth.uid());
+FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager') AND requested_by != auth.uid());
 
 -- FLEET & ASSIGNMENTS
 DROP POLICY IF EXISTS "vehicles_select" ON vehicles;
 CREATE POLICY "vehicles_select" ON vehicles FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "vehicles_modify" ON vehicles;
-CREATE POLICY "vehicles_modify" ON vehicles FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "vehicles_modify" ON vehicles FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "routes_select" ON routes;
 CREATE POLICY "routes_select" ON routes FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "routes_modify" ON routes;
-CREATE POLICY "routes_modify" ON routes FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "routes_modify" ON routes FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "assignments_select" ON vehicle_assignments;
 CREATE POLICY "assignments_select" ON vehicle_assignments
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant') OR driver_id = auth.uid() OR salesperson_id = auth.uid());
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant') OR driver_id = auth.uid() OR salesperson_id = auth.uid());
 
 DROP POLICY IF EXISTS "assignments_modify" ON vehicle_assignments;
-CREATE POLICY "assignments_modify" ON vehicle_assignments FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "assignments_modify" ON vehicle_assignments FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 -- DELIVERIES & LINE ITEMS
 DROP POLICY IF EXISTS "deliveries_select_policy" ON deliveries;
 CREATE POLICY "deliveries_select_policy" ON deliveries
 FOR SELECT USING (
-    auth.get_user_role() IN ('owner', 'manager', 'accountant')
+    public.get_user_role() IN ('owner', 'manager', 'accountant')
     OR created_by = auth.uid()
     OR vehicle_assignment_id IN (
         SELECT id FROM vehicle_assignments WHERE driver_id = auth.uid() OR salesperson_id = auth.uid()
@@ -308,14 +308,14 @@ FOR SELECT USING (
 DROP POLICY IF EXISTS "deliveries_insert_policy" ON deliveries;
 CREATE POLICY "deliveries_insert_policy" ON deliveries
 FOR INSERT WITH CHECK (
-    auth.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
+    public.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
     AND created_by = auth.uid()
 );
 
 DROP POLICY IF EXISTS "deliveries_update_policy" ON deliveries;
 CREATE POLICY "deliveries_update_policy" ON deliveries
 FOR UPDATE USING (
-    auth.get_user_role() IN ('owner', 'manager', 'accountant')
+    public.get_user_role() IN ('owner', 'manager', 'accountant')
     OR created_by = auth.uid()
 );
 
@@ -326,7 +326,7 @@ FOR SELECT USING (
         SELECT 1 FROM deliveries d
         WHERE d.id = delivery_items.delivery_id
         AND (
-            auth.get_user_role() IN ('owner', 'manager', 'accountant')
+            public.get_user_role() IN ('owner', 'manager', 'accountant')
             OR d.created_by = auth.uid()
         )
     )
@@ -339,7 +339,7 @@ FOR INSERT WITH CHECK (
         SELECT 1 FROM deliveries d
         WHERE d.id = delivery_items.delivery_id
         AND (
-            auth.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
+            public.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
             AND d.created_by = auth.uid()
         )
     )
@@ -349,28 +349,28 @@ FOR INSERT WITH CHECK (
 DROP POLICY IF EXISTS "payment_decl_select" ON payment_declarations;
 CREATE POLICY "payment_decl_select" ON payment_declarations
 FOR SELECT USING (
-    auth.get_user_role() IN ('owner', 'manager', 'accountant')
+    public.get_user_role() IN ('owner', 'manager', 'accountant')
     OR declared_by = auth.uid()
 );
 
 DROP POLICY IF EXISTS "payment_decl_insert" ON payment_declarations;
 CREATE POLICY "payment_decl_insert" ON payment_declarations
 FOR INSERT WITH CHECK (
-    auth.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
+    public.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
     AND declared_by = auth.uid()
 );
 
 DROP POLICY IF EXISTS "collections_select" ON collections;
 CREATE POLICY "collections_select" ON collections
 FOR SELECT USING (
-    auth.get_user_role() IN ('owner', 'manager', 'accountant')
+    public.get_user_role() IN ('owner', 'manager', 'accountant')
     OR collected_by = auth.uid()
 );
 
 DROP POLICY IF EXISTS "collections_insert" ON collections;
 CREATE POLICY "collections_insert" ON collections
 FOR INSERT WITH CHECK (
-    auth.get_user_role() IN ('owner', 'manager', 'cash_collector', 'accountant', 'salesperson', 'driver')
+    public.get_user_role() IN ('owner', 'manager', 'cash_collector', 'accountant', 'salesperson', 'driver')
     AND collected_by = auth.uid()
 );
 
@@ -379,32 +379,32 @@ CREATE POLICY "allocations_select" ON payment_allocations FOR SELECT USING (true
 
 DROP POLICY IF EXISTS "allocations_insert" ON payment_allocations;
 CREATE POLICY "allocations_insert" ON payment_allocations
-FOR INSERT WITH CHECK (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR INSERT WITH CHECK (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 DROP POLICY IF EXISTS "reversals_select" ON payment_reversals;
 CREATE POLICY "reversals_select" ON payment_reversals
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 DROP POLICY IF EXISTS "reversals_insert" ON payment_reversals;
 CREATE POLICY "reversals_insert" ON payment_reversals
-FOR INSERT WITH CHECK (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR INSERT WITH CHECK (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 -- TURNOVER SETTLEMENTS
 DROP POLICY IF EXISTS "turnovers_select" ON employee_turnovers;
 CREATE POLICY "turnovers_select" ON employee_turnovers
 FOR SELECT USING (
-    auth.get_user_role() IN ('owner', 'manager', 'accountant')
+    public.get_user_role() IN ('owner', 'manager', 'accountant')
     OR employee_id = auth.uid()
 );
 
 DROP POLICY IF EXISTS "turnovers_insert_update" ON employee_turnovers;
 CREATE POLICY "turnovers_insert_update" ON employee_turnovers
-FOR ALL USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR ALL USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 -- SMS, CONFIRMATIONS & DISPUTES
 DROP POLICY IF EXISTS "inbound_sms_select" ON inbound_sms_messages;
 CREATE POLICY "inbound_sms_select" ON inbound_sms_messages
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 DROP POLICY IF EXISTS "confirmations_select" ON customer_confirmations;
 CREATE POLICY "confirmations_select" ON customer_confirmations FOR SELECT USING (true);
@@ -417,19 +417,19 @@ CREATE POLICY "disputes_select" ON customer_disputes FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "disputes_modify" ON customer_disputes;
 CREATE POLICY "disputes_modify" ON customer_disputes
-FOR UPDATE USING (auth.get_user_role() IN ('owner', 'manager'));
+FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager'));
 
 -- NOTIFICATIONS
 DROP POLICY IF EXISTS "notifications_select" ON notifications;
 CREATE POLICY "notifications_select" ON notifications
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 -- STOCK & INVENTORY
 DROP POLICY IF EXISTS "stock_locations_select" ON stock_locations;
 CREATE POLICY "stock_locations_select" ON stock_locations FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "stock_locations_modify" ON stock_locations;
-CREATE POLICY "stock_locations_modify" ON stock_locations FOR ALL USING (auth.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "stock_locations_modify" ON stock_locations FOR ALL USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "inventory_balances_select" ON inventory_balances;
 CREATE POLICY "inventory_balances_select" ON inventory_balances FOR SELECT USING (true);
@@ -443,21 +443,21 @@ CREATE POLICY "stock_movements_select" ON stock_movements FOR SELECT USING (true
 -- LOCATION SAMPLES & AUDIT LOGS
 DROP POLICY IF EXISTS "location_samples_select" ON location_samples;
 CREATE POLICY "location_samples_select" ON location_samples
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "location_samples_insert" ON location_samples;
 CREATE POLICY "location_samples_insert" ON location_samples
 FOR INSERT WITH CHECK (
-    auth.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
+    public.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver')
 );
 
 DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
 CREATE POLICY "audit_logs_select" ON audit_logs
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager'));
 
 DROP POLICY IF EXISTS "corrections_select" ON transaction_corrections;
 CREATE POLICY "corrections_select" ON transaction_corrections
-FOR SELECT USING (auth.get_user_role() IN ('owner', 'manager', 'accountant'));
+FOR SELECT USING (public.get_user_role() IN ('owner', 'manager', 'accountant'));
 
 -- ============================================================================
 -- 6. ATOMIC DELIVERY CREATION STORED PROCEDURE (RPC)
