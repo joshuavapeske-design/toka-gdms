@@ -382,6 +382,7 @@ export async function GET() {
           delivery_reference,
           client_tx_id,
           customer_id,
+          created_by,
           vehicle_assignment_id,
           subtotal_amount,
           discount_amount,
@@ -394,7 +395,13 @@ export async function GET() {
           notes,
           created_at,
           customer:customers (name, primary_phone),
-          creator:profiles!deliveries_created_by_fkey (full_name),
+          creator:profiles!deliveries_created_by_fkey (id, full_name, role),
+          vehicle_assignment:vehicle_assignments (
+            vehicle_id,
+            driver_id,
+            vehicles (registration_plate, make_model),
+            driver:profiles!vehicle_assignments_driver_id_fkey (full_name)
+          ),
           delivery_items (
             product_id,
             selling_unit,
@@ -425,6 +432,8 @@ export async function GET() {
         customerName: d.customer?.name || 'Customer',
         customerPhone: d.customer?.primary_phone || '',
         vehicleAssignmentId: d.vehicle_assignment_id,
+        vehiclePlate: d.vehicle_assignment?.vehicles?.registration_plate || 'Assigned Truck',
+        driverName: d.vehicle_assignment?.driver?.full_name || 'Vehicle Driver',
         totalAmount: parseFloat(d.total_amount) || 0,
         totalDeclaredPaid: parseFloat(d.total_declared_paid) || 0,
         outstandingBalance: parseFloat(d.outstanding_balance) || 0,
@@ -447,7 +456,9 @@ export async function GET() {
           externalRef: p.external_reference,
         })),
         createdAt: d.created_at,
-        createdByName: d.creator?.full_name || 'System Operative',
+        createdBy: d.created_by,
+        createdByName: d.creator?.full_name || 'Grace Muthoni',
+        createdByRole: d.creator?.role || 'salesperson',
         notes: d.notes,
       }));
 

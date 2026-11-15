@@ -32,7 +32,60 @@ export interface SimulatedDelivery {
   }>;
   createdAt: string;
   createdByName: string;
+  createdByRole?: string;
+  vehiclePlate?: string;
+  driverName?: string;
   notes?: string | null;
+}
+
+export interface SimulatedVehicle {
+  id: string;
+  registrationPlate: string;
+  makeModel: string;
+  tonnageCapacity: number;
+  ownershipType: 'owned' | 'leased' | 'contracted';
+  status: 'active' | 'maintenance' | 'grounded';
+  isActive: boolean;
+  stockLocationId: string;
+  onboardStock: Array<{
+    productId: string;
+    productName: string;
+    sku: string;
+    fullSheets: number;
+    halfSheets: number;
+    fseTotal: number;
+  }>;
+}
+
+export interface SimulatedAssignment {
+  id: string;
+  vehicleId: string;
+  vehiclePlate: string;
+  vehicleModel: string;
+  routeId: string;
+  routeCode: string;
+  routeName: string;
+  driverId: string;
+  driverName: string;
+  salespersonId: string;
+  salespersonName: string;
+  secondarySalespersonId?: string | null;
+  secondarySalespersonName?: string | null;
+  crewIds?: string[];
+  crewNames?: string[];
+  shiftDate: string;
+  startedAt: string;
+  endedAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+  onboardStock?: Array<{
+    productId: string;
+    productName: string;
+    sku: string;
+    fullSheets: number;
+    halfSheets: number;
+    fseTotal: number;
+  }>;
 }
 
 export interface SimulatedDispute {
@@ -56,7 +109,97 @@ export interface SimulatedDispute {
 declare global {
   var __tokaDemoDeliveries: SimulatedDelivery[] | undefined;
   var __tokaDemoDisputes: SimulatedDispute[] | undefined;
+  var __tokaDemoVehicles: SimulatedVehicle[] | undefined;
+  var __tokaDemoAssignments: SimulatedAssignment[] | undefined;
 }
+
+const INITIAL_VEHICLES: SimulatedVehicle[] = [
+  {
+    id: '77777777-7777-7777-7777-777777777701',
+    registrationPlate: 'KBZ 123X',
+    makeModel: 'Isuzu FRR 10-Tonne Glass Carrier',
+    tonnageCapacity: 10.0,
+    ownershipType: 'owned',
+    status: 'active',
+    isActive: true,
+    stockLocationId: '33333333-3333-3333-3333-333333333303',
+    onboardStock: [
+      {
+        productId: '33333333-3333-3333-3333-333333333301',
+        productName: '4mm Clear Float Glass (2440 x 1830 mm)',
+        sku: 'GL-CF-4MM',
+        fullSheets: 30,
+        halfSheets: 4,
+        fseTotal: 32.0,
+      },
+      {
+        productId: '33333333-3333-3333-3333-333333333302',
+        productName: '5mm Clear Float Glass (2440 x 1830 mm)',
+        sku: 'GL-CF-5MM',
+        fullSheets: 20,
+        halfSheets: 2,
+        fseTotal: 21.0,
+      },
+      {
+        productId: '33333333-3333-3333-3333-333333333304',
+        productName: '5mm Tinted Bronze Glass (2440 x 1830 mm)',
+        sku: 'GL-TB-5MM',
+        fullSheets: 10,
+        halfSheets: 0,
+        fseTotal: 10.0,
+      },
+    ],
+  },
+  {
+    id: '77777777-7777-7777-7777-777777777702',
+    registrationPlate: 'KDG 456Y',
+    makeModel: 'Mitsubishi Fuso 7-Tonne Flatbed',
+    tonnageCapacity: 7.0,
+    ownershipType: 'owned',
+    status: 'active',
+    isActive: true,
+    stockLocationId: '33333333-3333-3333-3333-333333333304',
+    onboardStock: [
+      {
+        productId: '33333333-3333-3333-3333-333333333301',
+        productName: '4mm Clear Float Glass (2440 x 1830 mm)',
+        sku: 'GL-CF-4MM',
+        fullSheets: 15,
+        halfSheets: 2,
+        fseTotal: 16.0,
+      },
+    ],
+  },
+];
+
+const INITIAL_ASSIGNMENTS: SimulatedAssignment[] = [
+  {
+    id: '55555555-5555-5555-5555-555555555501',
+    vehicleId: '77777777-7777-7777-7777-777777777701',
+    vehiclePlate: 'KBZ 123X',
+    vehicleModel: 'Isuzu FRR 10-Tonne Glass Carrier',
+    routeId: '66666666-6666-6666-6666-666666666601',
+    routeCode: 'RT-01',
+    routeName: 'Industrial Area - Gikomba Express',
+    driverId: '00000000-0000-0000-0000-000000000004',
+    driverName: 'David Ochieng',
+    salespersonId: '00000000-0000-0000-0000-000000000003',
+    salespersonName: 'Grace Muthoni',
+    secondarySalespersonId: '00000000-0000-0000-0000-000000000007',
+    secondarySalespersonName: 'Mary Wanjiku',
+    crewIds: [
+      '00000000-0000-0000-0000-000000000004',
+      '00000000-0000-0000-0000-000000000003',
+      '00000000-0000-0000-0000-000000000007',
+    ],
+    crewNames: ['David Ochieng (Driver)', 'Grace Muthoni (Sales Lead)', 'Mary Wanjiku (Sales 2)'],
+    shiftDate: new Date().toISOString().split('T')[0],
+    startedAt: new Date().toISOString(),
+    endedAt: null,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+];
 
 const INITIAL_DELIVERIES: SimulatedDelivery[] = [
   {
@@ -174,6 +317,14 @@ if (!globalThis.__tokaDemoDisputes) {
   globalThis.__tokaDemoDisputes = [...INITIAL_DISPUTES];
 }
 
+if (!globalThis.__tokaDemoVehicles) {
+  globalThis.__tokaDemoVehicles = [...INITIAL_VEHICLES];
+}
+
+if (!globalThis.__tokaDemoAssignments) {
+  globalThis.__tokaDemoAssignments = [...INITIAL_ASSIGNMENTS];
+}
+
 export const demoStore = {
   getDeliveries(): SimulatedDelivery[] {
     return globalThis.__tokaDemoDeliveries || [];
@@ -182,6 +333,110 @@ export const demoStore = {
   addDelivery(del: SimulatedDelivery) {
     if (!globalThis.__tokaDemoDeliveries) globalThis.__tokaDemoDeliveries = [];
     globalThis.__tokaDemoDeliveries.unshift(del);
+
+    // Also deduct stock from the assigned vehicle if present
+    if (del.vehicleAssignmentId) {
+      const assignment = this.getAssignments().find((a) => a.id === del.vehicleAssignmentId);
+      if (assignment) {
+        const vehicles = this.getVehicles();
+        const vehicle = vehicles.find((v) => v.id === assignment.vehicleId);
+        if (vehicle && vehicle.onboardStock) {
+          for (const item of del.items) {
+            const stockItem = vehicle.onboardStock.find((s) => s.productId === item.productId);
+            if (stockItem) {
+              if (item.sellingUnit === 'FULL_SHEET') {
+                stockItem.fullSheets = Math.max(0, stockItem.fullSheets - item.quantity);
+              } else {
+                stockItem.halfSheets = Math.max(0, stockItem.halfSheets - item.quantity);
+              }
+              stockItem.fseTotal = stockItem.fullSheets + stockItem.halfSheets * 0.5;
+            }
+          }
+        }
+      }
+    }
+  },
+
+  getVehicles(): SimulatedVehicle[] {
+    return globalThis.__tokaDemoVehicles || [];
+  },
+
+  addVehicle(v: {
+    registrationPlate: string;
+    makeModel: string;
+    tonnageCapacity: number;
+    ownershipType?: 'owned' | 'leased' | 'contracted';
+  }): SimulatedVehicle {
+    if (!globalThis.__tokaDemoVehicles) globalThis.__tokaDemoVehicles = [];
+    const newVeh: SimulatedVehicle = {
+      id: `veh-${Date.now()}`,
+      registrationPlate: v.registrationPlate.toUpperCase(),
+      makeModel: v.makeModel,
+      tonnageCapacity: v.tonnageCapacity,
+      ownershipType: v.ownershipType || 'owned',
+      status: 'active',
+      isActive: true,
+      stockLocationId: `loc-${Date.now()}`,
+      onboardStock: [
+        {
+          productId: '33333333-3333-3333-3333-333333333301',
+          productName: '4mm Clear Float Glass (2440 x 1830 mm)',
+          sku: 'GL-CF-4MM',
+          fullSheets: 0,
+          halfSheets: 0,
+          fseTotal: 0,
+        },
+        {
+          productId: '33333333-3333-3333-3333-333333333302',
+          productName: '5mm Clear Float Glass (2440 x 1830 mm)',
+          sku: 'GL-CF-5MM',
+          fullSheets: 0,
+          halfSheets: 0,
+          fseTotal: 0,
+        },
+      ],
+    };
+    globalThis.__tokaDemoVehicles.push(newVeh);
+    return newVeh;
+  },
+
+  loadVehicleStock(load: {
+    vehicleId: string;
+    productId: string;
+    fullSheets: number;
+    halfSheets: number;
+    notes?: string;
+  }) {
+    const vehicles = this.getVehicles();
+    const veh = vehicles.find((v) => v.id === load.vehicleId);
+    if (!veh) throw new Error('Vehicle not found');
+
+    if (!veh.onboardStock) veh.onboardStock = [];
+    let item = veh.onboardStock.find((s) => s.productId === load.productId);
+    if (!item) {
+      item = {
+        productId: load.productId,
+        productName: 'Glass Product',
+        sku: 'GL-SPEC',
+        fullSheets: 0,
+        halfSheets: 0,
+        fseTotal: 0,
+      };
+      veh.onboardStock.push(item);
+    }
+    item.fullSheets += load.fullSheets;
+    item.halfSheets += load.halfSheets;
+    item.fseTotal = item.fullSheets + item.halfSheets * 0.5;
+    return veh;
+  },
+
+  getAssignments(): SimulatedAssignment[] {
+    return globalThis.__tokaDemoAssignments || [];
+  },
+
+  addAssignment(assign: SimulatedAssignment) {
+    if (!globalThis.__tokaDemoAssignments) globalThis.__tokaDemoAssignments = [];
+    globalThis.__tokaDemoAssignments.unshift(assign);
   },
 
   getDisputes(): SimulatedDispute[] {
@@ -296,3 +551,4 @@ export const demoStore = {
     };
   },
 };
+

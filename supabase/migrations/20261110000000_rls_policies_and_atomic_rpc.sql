@@ -222,15 +222,15 @@ DROP POLICY IF EXISTS "profiles_update_policy" ON profiles;
 CREATE POLICY "profiles_update_policy" ON profiles
 FOR UPDATE USING (public.get_user_role() = 'owner' OR id = auth.uid());
 
--- CUSTOMERS & CONTACTS
+-- CUSTOMERS & CONTACTS (UNIVERSAL ONBOARDING)
 DROP POLICY IF EXISTS "customers_select_policy" ON customers;
 CREATE POLICY "customers_select_policy" ON customers FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "customers_insert_policy" ON customers;
-CREATE POLICY "customers_insert_policy" ON customers FOR INSERT WITH CHECK (public.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customers_insert_policy" ON customers FOR INSERT WITH CHECK (public.get_user_role() IN ('owner', 'manager', 'salesperson', 'driver', 'cash_collector', 'accountant'));
 
 DROP POLICY IF EXISTS "customers_update_policy" ON customers;
-CREATE POLICY "customers_update_policy" ON customers FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager'));
+CREATE POLICY "customers_update_policy" ON customers FOR UPDATE USING (public.get_user_role() IN ('owner', 'manager') OR created_by = auth.uid());
 
 DROP POLICY IF EXISTS "customer_contacts_select" ON customer_contacts;
 CREATE POLICY "customer_contacts_select" ON customer_contacts FOR SELECT USING (true);
@@ -565,8 +565,10 @@ BEGIN
         RAISE EXCEPTION 'ROLE_NOT_AUTHORIZED: Role % is not authorized to submit deliveries', v_caller_role;
     END IF;
 
-    -- 2. VEHICLE SHIFT ASSIGNMENT VERIFICATION
-    SELECT va.id, va.vehicle_id, va.driver_id, va.salesperson_id, va.is_active,
+    -- 2. VEHICLE SHIFT ASSIGNMENT & MULTI-PERSON CREW VERIFICATION
+    SELECT va.id, va.vehicle_id, va.driver_id, va.salesperson_id,
+           va.secondary_salesperson_id, va.crew_ids,
+           va.is_active,
            v.status AS vehicle_status, v.is_active AS vehicle_active
     INTO v_assignment
     FROM vehicle_assignments va
@@ -585,12 +587,18 @@ BEGIN
         RAISE EXCEPTION 'VEHICLE_UNAVAILABLE: Assigned vehicle is % or inactive', v_assignment.vehicle_status;
     END IF;
 
-    IF v_caller_role IN ('driver', 'salesperson') THEN
-        IF v_assignment.driver_id != v_caller_id AND v_assignment.salesperson_id != v_caller_id THEN
+    IF v_caller_role IN ('driver', 'salesperson', 'cash_collector') THEN
+        IF v_assignment.driver_id != v_caller_id 
+           AND v_assignment.salesperson_id != v_caller_id 
+           AND (v_assignment.secondary_salesperson_id IS NULL OR v_assignment.secondary_salesperson_id != v_caller_id)
+           AND NOT (v_caller_id = ANY(COALESCE(v_assignment.crew_ids, '{}'))) THEN
             RAISE EXCEPTION 'UNAUTHORIZED_SHIFT: Caller % is not assigned to vehicle assignment %', v_caller_id, p_vehicle_assignment_id;
         END IF;
     ELSIF v_caller_role IN ('owner', 'manager') THEN
-        IF v_assignment.driver_id != v_caller_id AND v_assignment.salesperson_id != v_caller_id THEN
+        IF v_assignment.driver_id != v_caller_id 
+           AND v_assignment.salesperson_id != v_caller_id
+           AND (v_assignment.secondary_salesperson_id IS NULL OR v_assignment.secondary_salesperson_id != v_caller_id)
+           AND NOT (v_caller_id = ANY(COALESCE(v_assignment.crew_ids, '{}'))) THEN
             INSERT INTO audit_logs (actor_id, action_type, entity_name, entity_id, payload_after)
             VALUES (v_caller_id, 'ADMIN_DELIVERY_OVERRIDE', 'vehicle_assignments', p_vehicle_assignment_id,
                     jsonb_build_object('notes', 'Manager/Owner ' || v_caller_id || ' submitted delivery ' || p_delivery_reference || ' on assignment ' || p_vehicle_assignment_id));
@@ -1171,6 +1179,78 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'dispatched_full', p_full_sheets, 'dispatched_half', p_half_sheets);
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION assign_vehicle_glass_stock(
+    p_vehicle_id UUID,
+    p_product_id UUID,
+    p_full_sheets INT,
+    p_half_sheets INT DEFAULT 0,
+    p_notes TEXT DEFAULT 'Vehicle glass loading for daily sales'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_operator_id UUID;
+    v_vehicle_location_id UUID;
+    v_veh_plate TEXT;
+    v_fse NUMERIC(10, 2);
+BEGIN
+    v_operator_id := auth.uid();
+    IF v_operator_id IS NULL AND current_user = 'postgres' THEN
+        SELECT id INTO v_operator_id FROM profiles WHERE role = 'owner' LIMIT 1;
+    END IF;
+
+    IF p_full_sheets < 0 OR p_half_sheets < 0 OR (p_full_sheets = 0 AND p_half_sheets = 0) THEN
+        RAISE EXCEPTION 'INVALID_QUANTITY: Loading quantities must be positive';
+    END IF;
+
+    -- Find or create vehicle truck stock location
+    SELECT id INTO v_vehicle_location_id
+    FROM stock_locations
+    WHERE vehicle_id = p_vehicle_id AND is_active = true;
+
+    IF v_vehicle_location_id IS NULL THEN
+        SELECT registration_plate INTO v_veh_plate FROM vehicles WHERE id = p_vehicle_id;
+        INSERT INTO stock_locations (name, location_type, vehicle_id, is_active)
+        VALUES ('Truck ' || COALESCE(v_veh_plate, p_vehicle_id::text) || ' Mobile Bay', 'truck', p_vehicle_id, true)
+        RETURNING id INTO v_vehicle_location_id;
+    END IF;
+
+    -- Add/Set vehicle stock balance
+    INSERT INTO inventory_balances (product_id, stock_location_id, full_sheets, half_sheets)
+    VALUES (p_product_id, v_vehicle_location_id, p_full_sheets, p_half_sheets)
+    ON CONFLICT (product_id, stock_location_id) DO UPDATE
+    SET full_sheets = inventory_balances.full_sheets + p_full_sheets,
+        half_sheets = inventory_balances.half_sheets + p_half_sheets,
+        updated_at = timezone('utc', now());
+
+    v_fse := (p_full_sheets * 1.0) + (p_half_sheets * 0.5);
+
+    -- Record stock movement
+    INSERT INTO stock_movements (
+        product_id, from_location_id, to_location_id,
+        full_sheets_delta, half_sheets_delta, fse_delta,
+        movement_type, responsible_employee_id, notes
+    ) VALUES (
+        p_product_id, NULL, v_vehicle_location_id,
+        p_full_sheets, p_half_sheets, v_fse,
+        'dispatch_to_truck', v_operator_id, p_notes
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'vehicle_id', p_vehicle_id,
+        'location_id', v_vehicle_location_id,
+        'full_sheets', p_full_sheets,
+        'half_sheets', p_half_sheets,
+        'fse', v_fse
+    );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION assign_vehicle_glass_stock TO authenticated, service_role;
 
 -- ============================================================================
 -- 8. COLLECTIONS & ALLOCATION STORED PROCEDURES

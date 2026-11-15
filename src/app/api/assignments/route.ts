@@ -3,11 +3,15 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
+import { demoStore } from '@/lib/demo-store';
+
 const createAssignmentSchema = z.object({
   vehicleId: z.string().uuid({ message: 'vehicleId must be a valid UUID' }),
   routeId: z.string().uuid({ message: 'routeId must be a valid UUID' }),
   driverId: z.string().uuid({ message: 'driverId must be a valid UUID' }),
   salespersonId: z.string().uuid({ message: 'salespersonId must be a valid UUID' }),
+  secondarySalespersonId: z.string().uuid().nullable().optional(),
+  crewIds: z.array(z.string().uuid()).optional(),
   shiftDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'shiftDate must be YYYY-MM-DD' }).default(() => new Date().toISOString().split('T')[0]),
 });
 
@@ -36,7 +40,7 @@ export async function GET() {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, data: simulatedAssignments });
+      return NextResponse.json({ success: true, data: demoStore.getAssignments() });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -53,7 +57,21 @@ export async function GET() {
         ended_at,
         is_active,
         created_at,
-        vehicles (registration_plate, make_model),
+        vehicles (
+          registration_plate,
+          make_model,
+          stock_locations (
+            id,
+            name,
+            inventory_balances (
+              product_id,
+              full_sheets,
+              half_sheets,
+              fse,
+              products (name, sku)
+            )
+          )
+        ),
         routes (code, name),
         driver:profiles!vehicle_assignments_driver_id_fkey (full_name),
         salesperson:profiles!vehicle_assignments_salesperson_id_fkey (full_name)
@@ -62,31 +80,49 @@ export async function GET() {
       .order('is_active', { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return NextResponse.json({ success: true, data: simulatedAssignments });
+      return NextResponse.json({ success: true, data: demoStore.getAssignments() });
     }
 
-    const formatted = data.map((va: any) => ({
-      id: va.id,
-      vehicleId: va.vehicle_id,
-      vehiclePlate: va.vehicles?.registration_plate || 'Unknown Plate',
-      vehicleModel: va.vehicles?.make_model || '',
-      routeId: va.route_id,
-      routeCode: va.routes?.code || '',
-      routeName: va.routes?.name || 'Assigned Route',
-      driverId: va.driver_id,
-      driverName: va.driver?.full_name || 'Assigned Driver',
-      salespersonId: va.salesperson_id,
-      salespersonName: va.salesperson?.full_name || 'Assigned Salesperson',
-      shiftDate: va.shift_date,
-      startedAt: va.started_at,
-      endedAt: va.ended_at,
-      isActive: va.is_active,
-      createdAt: va.created_at,
-    }));
+    const formatted = data.map((va: any) => {
+      const truckLocation = va.vehicles?.stock_locations?.[0];
+      const onboardStock = (truckLocation?.inventory_balances || []).map((b: any) => ({
+        productId: b.product_id,
+        productName: b.products?.name || 'Glass',
+        sku: b.products?.sku || '',
+        locationId: truckLocation?.id,
+        locationName: truckLocation?.name,
+        fullSheets: b.full_sheets,
+        halfSheets: b.half_sheets,
+        fseTotal: parseFloat(b.fse) || (b.full_sheets + b.half_sheets * 0.5),
+      }));
+
+      return {
+        id: va.id,
+        vehicleId: va.vehicle_id,
+        vehiclePlate: va.vehicles?.registration_plate || 'Unknown Plate',
+        vehicleModel: va.vehicles?.make_model || '',
+        routeId: va.route_id,
+        routeCode: va.routes?.code || '',
+        routeName: va.routes?.name || 'Assigned Route',
+        driverId: va.driver_id,
+        driverName: va.driver?.full_name || 'Assigned Driver',
+        salespersonId: va.salesperson_id,
+        salespersonName: va.salesperson?.full_name || 'Assigned Salesperson',
+        secondarySalespersonId: va.secondary_salesperson_id || null,
+        secondarySalespersonName: va.secondary_salesperson?.full_name || null,
+        crewIds: va.crew_ids || [],
+        shiftDate: va.shift_date,
+        startedAt: va.started_at,
+        endedAt: va.ended_at,
+        isActive: va.is_active,
+        createdAt: va.created_at,
+        onboardStock,
+      };
+    });
 
     return NextResponse.json({ success: true, data: formatted });
   } catch {
-    return NextResponse.json({ success: true, data: simulatedAssignments });
+    return NextResponse.json({ success: true, data: demoStore.getAssignments() });
   }
 }
 
@@ -100,7 +136,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: errorMsg }, { status: 400 });
     }
 
-    const { vehicleId, routeId, driverId, salespersonId, shiftDate } = parseResult.data;
+    const { vehicleId, routeId, driverId, salespersonId, secondarySalespersonId, crewIds, shiftDate } = parseResult.data;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
@@ -113,20 +149,24 @@ export async function POST(request: Request) {
         routeCode: 'RT-NEW',
         routeName: 'Dispatched Route',
         driverId,
-        driverName: 'Assigned Driver',
+        driverName: 'David Ochieng',
         salespersonId,
-        salespersonName: 'Assigned Salesperson',
+        salespersonName: 'Grace Muthoni',
+        secondarySalespersonId: secondarySalespersonId || null,
+        secondarySalespersonName: secondarySalespersonId ? 'Second Sales Rep' : null,
+        crewIds: crewIds || [driverId, salespersonId],
+        crewNames: ['Driver & Sales Crew'],
         shiftDate,
         startedAt: new Date().toISOString(),
         endedAt: null,
         isActive: true,
         createdAt: new Date().toISOString(),
       };
-      simulatedAssignments.unshift(newSim);
+      demoStore.addAssignment(newSim as any);
       return NextResponse.json({
         success: true,
         simulated: true,
-        message: 'Daily vehicle shift assignment successfully started.',
+        message: 'Daily vehicle shift assignment successfully started with 2-3 crew members.',
         data: newSim,
       });
     }
@@ -149,28 +189,60 @@ export async function POST(request: Request) {
       );
     }
 
+    // Try inserting with crew fields; fall back if migration not yet applied
+    const insertPayload: any = {
+      vehicle_id: vehicleId,
+      route_id: routeId,
+      driver_id: driverId,
+      salesperson_id: salespersonId,
+      shift_date: shiftDate,
+      started_at: new Date().toISOString(),
+      is_active: true,
+    };
+    if (secondarySalespersonId) insertPayload.secondary_salesperson_id = secondarySalespersonId;
+    if (crewIds && crewIds.length > 0) insertPayload.crew_ids = crewIds;
+
     const { data, error } = await supabase
       .from('vehicle_assignments')
-      .insert({
-        vehicle_id: vehicleId,
-        route_id: routeId,
-        driver_id: driverId,
-        salesperson_id: salespersonId,
-        shift_date: shiftDate,
-        started_at: new Date().toISOString(),
-        is_active: true,
-      })
+      .insert(insertPayload)
       .select('id, shift_date, started_at, is_active')
       .single();
 
     if (error) {
+      // If error is about missing column secondary_salesperson_id, retry without them
+      if (error.message.includes('secondary_salesperson_id') || error.message.includes('crew_ids')) {
+        const fallbackInsert = {
+          vehicle_id: vehicleId,
+          route_id: routeId,
+          driver_id: driverId,
+          salesperson_id: salespersonId,
+          shift_date: shiftDate,
+          started_at: new Date().toISOString(),
+          is_active: true,
+        };
+        const { data: fbData, error: fbErr } = await supabase
+          .from('vehicle_assignments')
+          .insert(fallbackInsert)
+          .select('id, shift_date, started_at, is_active')
+          .single();
+
+        if (fbErr) {
+          return NextResponse.json({ success: false, error: fbErr.message }, { status: 422 });
+        }
+        return NextResponse.json({
+          success: true,
+          message: 'Vehicle shift successfully started.',
+          data: fbData,
+        });
+      }
+
       console.error('[ASSIGNMENT CREATE ERROR]', error);
       return NextResponse.json({ success: false, error: error.message }, { status: 422 });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Vehicle shift successfully started.',
+      message: 'Vehicle shift successfully started with crew assigned.',
       data,
     });
   } catch (err: any) {

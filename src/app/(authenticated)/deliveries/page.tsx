@@ -17,6 +17,10 @@ import {
   X,
   Smartphone,
   Info,
+  User,
+  DollarSign,
+  Wallet,
+  ShieldCheck,
 } from 'lucide-react';
 import { formatKES } from '@/lib/decimal';
 
@@ -44,6 +48,8 @@ interface DeliveryRecord {
   customerName: string;
   customerPhone: string;
   vehicleAssignmentId: string;
+  vehiclePlate?: string;
+  driverName?: string;
   totalAmount: number;
   totalDeclaredPaid: number;
   outstandingBalance: number;
@@ -55,6 +61,7 @@ interface DeliveryRecord {
   payments?: PaymentData[];
   createdAt: string;
   createdByName: string;
+  createdByRole?: string;
   notes?: string | null;
 }
 
@@ -168,16 +175,38 @@ export default function DeliveriesPage() {
     const matchesSearch =
       d.deliveryReference.toLowerCase().includes(search.toLowerCase()) ||
       d.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      d.customerPhone.includes(search);
+      d.customerPhone.includes(search) ||
+      (d.createdByName && d.createdByName.toLowerCase().includes(search.toLowerCase())) ||
+      (d.vehiclePlate && d.vehiclePlate.toLowerCase().includes(search.toLowerCase()));
 
     if (!matchesSearch) return false;
 
     if (statusFilter === 'all') return true;
+    if (statusFilter === 'my_vehicle') return true; // highlights all vehicle runs today
     if (statusFilter === 'pending') return d.customerConfirmationStatus === 'pending';
     if (statusFilter === 'confirmed') return d.customerConfirmationStatus === 'confirmed';
     if (statusFilter === 'disputed') return d.customerConfirmationStatus === 'disputed';
     return true;
   });
+
+  // Driver vehicle sales and cash reconciliation calculation
+  const totalVehicleCash = deliveries.reduce((sum, d) => {
+    const cash = (d.payments || []).filter((p) => p.channel === 'cash').reduce((s, p) => s + p.declaredAmount, 0);
+    return sum + cash;
+  }, 0);
+
+  const totalVehicleMpesa = deliveries.reduce((sum, d) => {
+    const mp = (d.payments || []).filter((p) => p.channel.includes('mpesa')).reduce((s, p) => s + p.declaredAmount, 0);
+    return sum + mp;
+  }, 0);
+
+  const sellerBreakdown = deliveries.reduce((acc: Record<string, { count: number; total: number }>, d) => {
+    const seller = d.createdByName || 'Field Sales Rep';
+    if (!acc[seller]) acc[seller] = { count: 0, total: 0 };
+    acc[seller].count += 1;
+    acc[seller].total += d.totalAmount;
+    return acc;
+  }, {});
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -186,10 +215,10 @@ export default function DeliveriesPage() {
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
             <Truck className="w-5 h-5 text-blue-600" />
-            Deliveries & Operational Audit
+            Field Sales & Vehicle Deliveries
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Audit dispatched glass deliveries, inspect payment declarations, and verify two-way customer confirmations.
+            Real-time delivery tracking: Driver visibility into who made each sale, physical stock delivered, and cash in hand.
           </p>
         </div>
         <Link
@@ -197,8 +226,58 @@ export default function DeliveriesPage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm transition"
         >
           <PlusCircle className="w-4 h-4" />
-          New Delivery
+          Record Sale from Vehicle
         </Link>
+      </div>
+
+      {/* Driver's Live Reconciliation & Attribution Manifest */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-5 border border-slate-800 shadow-md">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <Truck className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-base font-bold text-white">Driver's Vehicle Sales & Cash Manifest</h2>
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold">
+                KBZ 123X · Isuzu FRR 10-Tonne
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Driver David Ochieng view: Live manifest of all orders sold from this vehicle, who sold each piece, and cash collected on the truck.
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-[10px] uppercase font-bold text-slate-400">Truck Cash in Hand</div>
+              <div className="text-lg font-extrabold text-emerald-400">{formatKES(totalVehicleCash)}</div>
+            </div>
+            <div className="text-right border-l border-slate-800 pl-4">
+              <div className="text-[10px] uppercase font-bold text-slate-400">Total Till M-Pesa</div>
+              <div className="text-lg font-extrabold text-blue-400">{formatKES(totalVehicleMpesa)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-slate-300 mb-2">Sales Attribution By Crew Member (Who Sold):</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {Object.entries(sellerBreakdown).map(([seller, info]) => (
+              <div key={seller} className="bg-slate-800/80 rounded-lg p-3 border border-slate-700 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-blue-400" />
+                    {seller}
+                  </div>
+                  <div className="text-sm font-extrabold text-emerald-400 mt-0.5">
+                    {formatKES(info.total)}
+                  </div>
+                </div>
+                <span className="text-[11px] bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full font-bold">
+                  {info.count} {info.count === 1 ? 'sale' : 'sales'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
@@ -207,7 +286,7 @@ export default function DeliveriesPage() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by ref (GD-XXXXXX-XXXX), customer, or phone..."
+            placeholder="Search by ref, customer, seller, or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
@@ -218,7 +297,8 @@ export default function DeliveriesPage() {
           <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <div className="flex gap-1">
             {[
-              { id: 'all', label: 'All Deliveries' },
+              { id: 'all', label: 'All Sales' },
+              { id: 'my_vehicle', label: '🚚 My Vehicle Run' },
               { id: 'pending', label: 'Pending SMS' },
               { id: 'confirmed', label: 'Customer Confirmed' },
               { id: 'disputed', label: 'Customer Disputed' },
@@ -270,8 +350,8 @@ export default function DeliveriesPage() {
               className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition"
             >
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                {/* Left: Reference, Customer & Meta */}
-                <div className="space-y-1">
+                {/* Left: Reference, Customer, Prominent Seller Attribution */}
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-base font-extrabold text-slate-900 font-mono">
                       {d.deliveryReference}
@@ -288,13 +368,51 @@ export default function DeliveriesPage() {
                     </span>
                   </div>
 
-                  <div className="text-xs text-slate-500">
-                    Recorded by <span className="font-semibold text-slate-700">{d.createdByName}</span> ·{' '}
-                    {new Date(d.createdAt).toLocaleString('en-KE', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
+                  {/* Explicit Seller Attribution for Driver & Management */}
+                  <div className="flex items-center gap-2 flex-wrap text-xs pt-0.5">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 font-bold border border-blue-200">
+                      <User className="w-3 h-3 text-blue-700" />
+                      Sold by: {d.createdByName} {d.createdByRole ? `(${d.createdByRole})` : ''}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium text-[11px]">
+                      <Truck className="w-3 h-3 text-slate-500" />
+                      {d.vehiclePlate || 'Truck KBZ 123X'}
+                    </span>
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-500 text-[11px]">
+                      {new Date(d.createdAt).toLocaleString('en-KE', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
                   </div>
+
+                  {/* Glass items delivered preview */}
+                  {d.items && d.items.length > 0 && (
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-md p-2 mt-1">
+                      <div className="font-semibold text-slate-700 text-[11px] mb-1">Sheets Delivered from Vehicle:</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {d.items.map((it, idx) => (
+                          <span key={idx} className="bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px] font-medium text-slate-800">
+                            {it.quantity}x {it.productName} ({it.sellingUnit.replace('_', ' ')})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Payment channels breakdown */}
+                  {d.payments && d.payments.length > 0 && (
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-0.5">
+                      <Wallet className="w-3 h-3 text-emerald-600" />
+                      <span className="font-medium text-slate-600">Collected:</span>
+                      {d.payments.map((p, idx) => (
+                        <span key={idx} className="font-semibold text-slate-700">
+                          {p.channel.replace(/_/g, ' ')} ({formatKES(p.declaredAmount)})
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {d.notes && (
                     <div className="text-xs text-slate-500 italic bg-slate-50 px-2 py-1 rounded inline-block">

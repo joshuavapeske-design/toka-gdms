@@ -24,14 +24,14 @@ export function Navigation({ currentRole = 'salesperson', userName = 'Field Oper
   const pathname = usePathname();
 
   const navLinks = [
-    { href: '/', label: 'Overview', icon: LayoutDashboard, roles: ['owner', 'manager', 'accountant', 'salesperson'] },
-    { href: '/deliveries/new', label: 'New Delivery', icon: PlusCircle, roles: ['owner', 'manager', 'salesperson', 'driver'] },
+    { href: '/', label: 'Overview', icon: LayoutDashboard, roles: ['owner', 'manager', 'accountant', 'salesperson', 'driver'] },
+    { href: '/deliveries/new', label: 'New Sale', icon: PlusCircle, roles: ['owner', 'manager', 'salesperson', 'driver'] },
     { href: '/deliveries', label: 'Deliveries', icon: Truck, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
-    { href: '/inventory', label: 'Stock (FSE)', icon: Layers, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
-    { href: '/assignments', label: 'Shifts', icon: Calendar, roles: ['owner', 'manager'] },
+    { href: '/inventory', label: 'Truck Stock', icon: Layers, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
+    { href: '/assignments', label: 'Fleet & Crews', icon: Calendar, roles: ['owner', 'manager'] },
+    { href: '/customers', label: 'Customers', icon: Users, roles: ['owner', 'manager', 'salesperson', 'driver', 'accountant'] },
+    { href: '/collections', label: 'Collections', icon: DollarSign, roles: ['owner', 'manager', 'cash_collector', 'accountant', 'driver'] },
     { href: '/remittances', label: 'Remittances', icon: ShieldCheck, roles: ['owner', 'manager', 'accountant'] },
-    { href: '/customers', label: 'Customers', icon: Users, roles: ['owner', 'manager', 'salesperson', 'accountant'] },
-    { href: '/collections', label: 'Collections', icon: DollarSign, roles: ['owner', 'manager', 'cash_collector', 'accountant'] },
     { href: '/disputes', label: 'Disputes', icon: AlertTriangle, roles: ['owner', 'manager', 'accountant'] },
   ];
 

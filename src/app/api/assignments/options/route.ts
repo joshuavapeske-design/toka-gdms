@@ -61,6 +61,12 @@ export async function GET() {
       role: p.role,
     }));
 
+    const allStaff = profiles.map((p: any) => ({
+      id: p.id,
+      fullName: p.full_name,
+      role: p.role,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
@@ -68,6 +74,7 @@ export async function GET() {
         routes: routes.length > 0 ? routes : DEFAULT_OPTIONS.routes,
         drivers: drivers.length > 0 ? drivers : DEFAULT_OPTIONS.drivers,
         salespersons: salespersons.length > 0 ? salespersons : DEFAULT_OPTIONS.salespersons,
+        allStaff: allStaff.length > 0 ? allStaff : [...DEFAULT_OPTIONS.salespersons, ...DEFAULT_OPTIONS.drivers],
       },
     });
   } catch {

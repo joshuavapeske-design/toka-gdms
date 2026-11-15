@@ -120,10 +120,11 @@ export async function GET() {
           created_by,
           created_at,
           updated_at,
-          credit_accounts (current_balance)
+          credit_accounts (current_balance),
+          creator:profiles!customers_created_by_fkey (full_name, role)
         `)
         .eq('is_active', true)
-        .order('name');
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('[CUSTOMERS API ERROR]', error);
@@ -147,6 +148,8 @@ export async function GET() {
         currentBalance: parseFloat(c.credit_accounts?.current_balance || '0'),
         isActive: c.is_active,
         createdBy: c.created_by,
+        createdByName: c.creator?.full_name || 'Field Sales Rep',
+        createdByRole: c.creator?.role || 'Staff',
         createdAt: c.created_at,
         updatedAt: c.updated_at,
       }));

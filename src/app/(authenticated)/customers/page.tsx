@@ -147,7 +147,7 @@ export default function CustomersPage() {
             Customers & Credit Directory
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Registered customer accounts, authorized credit limits, and delivery locations
+            Universal Customer Registration: Any salesperson, driver, or crew member can register customers on the road. Higher management audits all new additions below.
           </p>
         </div>
         <button
@@ -158,8 +158,59 @@ export default function CustomersPage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition"
         >
           <Plus className="w-4 h-4" />
-          Add Customer
+          Add Customer on Route
         </button>
+      </div>
+
+      {/* Higher Management Audit: Recently Added Customers */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-xl p-5 border border-blue-800 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-blue-800">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-sm font-bold text-white">Higher Management Audit — New Customer Onboarding</h2>
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">
+              Owner & Manager Oversight
+            </span>
+          </div>
+          <span className="text-xs text-blue-200">
+            {customers.length} total customers registered
+          </span>
+        </div>
+
+        <div className="mt-3">
+          <div className="text-xs text-blue-200 mb-2 font-medium">
+            Review newly onboarded customers added by field reps & drivers:
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {customers.slice(0, 3).map((nc) => (
+              <div key={nc.id} className="bg-slate-800/80 rounded-lg p-3 border border-slate-700">
+                <div className="flex items-start justify-between">
+                  <div className="font-bold text-white text-xs truncate">{nc.name}</div>
+                  <span className="text-[10px] font-mono text-blue-300 bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-800">
+                    {nc.accountNumber}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300 mt-1">
+                  Location: <span className="font-medium text-white">{nc.deliveryArea}</span>
+                </div>
+                <div className="text-[11px] text-emerald-300 mt-0.5">
+                  Added by: <span className="font-bold text-white">{nc.createdByName || 'Grace Muthoni (Salesperson)'}</span>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-slate-700 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400">
+                    {nc.isCreditEligible ? `Credit Limit: ${formatKES(nc.creditLimit)}` : 'Cash Terms (No Credit)'}
+                  </span>
+                  <button
+                    onClick={() => openEditCredit(nc)}
+                    className="text-[10px] text-blue-300 hover:text-white font-bold underline cursor-pointer"
+                  >
+                    Adjust Credit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Status Banner */}
@@ -242,6 +293,9 @@ export default function CustomersPage() {
                   <div className="flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
                     <span>{customer.deliveryArea}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 pt-1">
+                    Onboarded by: <span className="font-semibold text-slate-700">{customer.createdByName || 'Field Sales Rep'} {customer.createdByRole ? `(${customer.createdByRole})` : ''}</span>
                   </div>
                 </div>
               </div>

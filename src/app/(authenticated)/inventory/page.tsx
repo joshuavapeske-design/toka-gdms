@@ -194,10 +194,10 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
             <Layers className="w-5 h-5 text-blue-600" />
-            Inventory & Sheet Balances
+            Vehicle Fleet Glass & Route Inventory
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Physical stock tracking across depots and vehicle bays. FSE = Full Sheets + (Half Sheets × 0.5)
+            Sales & Vehicle Stock Accounting: Track glass sheets loaded on delivery trucks for daily route sales, deductions from customer deliveries, and depot reserves.
           </p>
         </div>
 
@@ -210,7 +210,7 @@ export default function InventoryPage() {
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
           >
             <Plus className="w-4 h-4" />
-            Receive Supplier Stock
+            Load Sheets onto Truck / Bay
           </button>
 
           <button
@@ -221,7 +221,7 @@ export default function InventoryPage() {
             className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
           >
             <Truck className="w-4 h-4" />
-            Dispatch to Vehicle
+            Transfer Stock to Vehicle
           </button>
         </div>
       </div>
@@ -350,7 +350,7 @@ export default function InventoryPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <Plus className="w-5 h-5 text-emerald-600" />
-                Receive Supplier Stock
+                Load Glass Sheets (Truck or Depot)
               </h2>
               <button onClick={() => setShowReceiveModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -375,16 +375,16 @@ export default function InventoryPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Destination Warehouse</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Destination Location (Truck Bay or Depot)</label>
                 <select
                   value={recvLocationId}
                   onChange={(e) => setRecvLocationId(e.target.value)}
                   className="w-full text-xs rounded-lg border border-slate-200 p-2.5 bg-slate-50 focus:bg-white"
                   required
                 >
-                  {warehouses.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.locationType === 'truck' ? '🚚 ' : '🏢 '}{loc.name}
                     </option>
                   ))}
                 </select>

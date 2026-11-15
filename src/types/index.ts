@@ -98,6 +98,8 @@ export interface Customer {
   currentBalance?: number;
   isActive: boolean;
   createdBy: string;
+  createdByName?: string;
+  createdByRole?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -123,10 +125,13 @@ export interface Vehicle {
   registrationPlate: string;
   makeModel: string;
   tonnageCapacity: number;
+  ownershipType?: 'owned' | 'leased' | 'contracted';
   status: 'active' | 'maintenance' | 'grounded';
   externalTrackerId?: string | null;
   isActive: boolean;
   createdAt: string;
+  stockLocationId?: string;
+  onboardStock?: StockBalance[];
 }
 
 export interface Route {
@@ -145,16 +150,22 @@ export interface VehicleAssignment {
   vehicleRegistrationPlate?: string;
   vehicleModel?: string;
   routeId: string;
+  routeCode?: string;
   routeName?: string;
   driverId: string;
   driverName?: string;
   salespersonId: string;
   salespersonName?: string;
+  secondarySalespersonId?: string | null;
+  secondarySalespersonName?: string | null;
+  crewIds?: string[];
+  crewNames?: string[];
   shiftDate: string;
   startedAt: string;
   endedAt?: string | null;
   isActive: boolean;
   createdAt: string;
+  onboardStock?: StockBalance[];
 }
 
 export interface DeliveryItem {
@@ -194,7 +205,10 @@ export interface Delivery {
   customerPhone?: string;
   createdBy: string;
   createdByName?: string;
+  createdByRole?: string;
   vehicleAssignmentId: string;
+  vehiclePlate?: string;
+  driverName?: string;
   
   operationalStatus: OperationalStatus;
   paymentStatus: PaymentStatus;
