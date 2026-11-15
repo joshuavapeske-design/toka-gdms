@@ -1,6 +1,7 @@
 // TOKA GDMS — Customer Disputes API (List and Resolve Disputes)
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { demoStore } from '@/lib/demo-store';
 import { z } from 'zod';
 
 const resolveDisputeSchema = z.object({
@@ -13,7 +14,7 @@ export async function GET() {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, data: [] });
+      return NextResponse.json({ success: true, data: demoStore.getDisputes() });
     }
 
     const supabase = await createServerSupabaseClient();
@@ -80,7 +81,15 @@ export async function POST(request: Request) {
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-      return NextResponse.json({ success: true, simulated: true });
+      const resolved = demoStore.resolveDispute(disputeId, resolutionNotes);
+      if (!resolved) {
+        return NextResponse.json({ success: false, error: 'Dispute not found' }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        simulated: true,
+        message: 'Dispute resolved successfully.',
+      });
     }
 
     const supabase = await createServerSupabaseClient();

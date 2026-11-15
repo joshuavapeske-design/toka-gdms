@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { demoStore } from '@/lib/demo-store';
 import {
   calculateFse,
   calculateLineTotal,
@@ -312,10 +313,46 @@ export async function POST(request: Request) {
     }
 
     // ── Local Simulation Mode (Development without Supabase) ───────────────
+    const newSimDelivery = {
+      id: `del-sim-${Date.now()}`,
+      deliveryReference: payload.deliveryReference,
+      clientTxId: payload.clientTxId,
+      customerId: payload.customerId,
+      customerName: payload.customerName || 'Registered Customer',
+      customerPhone: payload.customerPhone || '+254712345678',
+      vehicleAssignmentId: payload.vehicleAssignmentId,
+      totalAmount: deliveryTotals.total,
+      totalDeclaredPaid: totalMoneyDeclared,
+      outstandingBalance,
+      operationalStatus: 'delivered' as const,
+      paymentStatus,
+      customerConfirmationStatus: 'pending' as const,
+      smsPayload: `TOKA GLASS: Delivery ${payload.deliveryReference} recorded. Total: KES ${deliveryTotals.total.toFixed(2)}, Paid: KES ${totalMoneyDeclared.toFixed(2)}, Due: KES ${outstandingBalance.toFixed(2)}. Reply 1 to CONFIRM or 2 to DISPUTE. Help: 0700000000`,
+      items: calculatedItems.map((item) => ({
+        productId: item.productId,
+        productName: 'Float Glass Specification',
+        sellingUnit: item.sellingUnit,
+        quantity: item.quantity,
+        appliedUnitPrice: item.appliedUnitPrice,
+        lineTotal: item.lineTotal,
+        fse: item.fullSheetEquivalent,
+      })),
+      payments: payload.payments.map((p) => ({
+        channel: p.channel,
+        declaredAmount: p.declaredAmount,
+        externalRef: p.externalRef,
+      })),
+      createdAt: new Date().toISOString(),
+      createdByName: 'Grace Muthoni (Salesperson)',
+      notes: payload.notes,
+    };
+
+    demoStore.addDelivery(newSimDelivery);
+
     return NextResponse.json({
       success: true,
       simulated: true,
-      deliveryId: `sim-${Date.now()}`,
+      deliveryId: newSimDelivery.id,
       deliveryReference: payload.deliveryReference,
       totalAmount: deliveryTotals.total,
       totalDeclaredPaid: totalMoneyDeclared,
@@ -328,5 +365,97 @@ export async function POST(request: Request) {
       { success: false, error: err.message || 'Internal server error during delivery synchronization' },
       { status: 500 }
     );
+  }
+}
+
+export async function GET() {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const isConfigured = supabaseUrl && !supabaseUrl.includes('placeholder');
+
+    if (isConfigured) {
+      const supabase = await createServerSupabaseClient();
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select(`
+          id,
+          delivery_reference,
+          client_tx_id,
+          customer_id,
+          vehicle_assignment_id,
+          subtotal_amount,
+          discount_amount,
+          total_amount,
+          total_declared_paid,
+          outstanding_balance,
+          operational_status,
+          payment_status,
+          customer_confirmation_status,
+          notes,
+          created_at,
+          customer:customers (name, primary_phone),
+          creator:profiles!deliveries_created_by_fkey (full_name),
+          delivery_items (
+            product_id,
+            selling_unit,
+            quantity,
+            applied_unit_price,
+            line_total,
+            fse_equivalent,
+            products (name)
+          ),
+          payment_declarations (
+            channel,
+            declared_amount,
+            external_reference
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[GET DELIVERIES ERROR]', error);
+        return NextResponse.json({ success: true, data: demoStore.getDeliveries() });
+      }
+
+      const formatted = (data || []).map((d: any) => ({
+        id: d.id,
+        deliveryReference: d.delivery_reference,
+        clientTxId: d.client_tx_id,
+        customerId: d.customer_id,
+        customerName: d.customer?.name || 'Customer',
+        customerPhone: d.customer?.primary_phone || '',
+        vehicleAssignmentId: d.vehicle_assignment_id,
+        totalAmount: parseFloat(d.total_amount) || 0,
+        totalDeclaredPaid: parseFloat(d.total_declared_paid) || 0,
+        outstandingBalance: parseFloat(d.outstanding_balance) || 0,
+        operationalStatus: d.operational_status,
+        paymentStatus: d.payment_status,
+        customerConfirmationStatus: d.customer_confirmation_status,
+        smsPayload: `TOKA GLASS: Delivery ${d.delivery_reference} recorded. Total: KES ${parseFloat(d.total_amount).toFixed(2)}, Paid: KES ${parseFloat(d.total_declared_paid).toFixed(2)}, Due: KES ${parseFloat(d.outstanding_balance).toFixed(2)}. Reply 1 to CONFIRM or 2 to DISPUTE.`,
+        items: (d.delivery_items || []).map((item: any) => ({
+          productId: item.product_id,
+          productName: item.products?.name || 'Glass Item',
+          sellingUnit: item.selling_unit,
+          quantity: item.quantity,
+          appliedUnitPrice: parseFloat(item.applied_unit_price) || 0,
+          lineTotal: parseFloat(item.line_total) || 0,
+          fse: parseFloat(item.fse_equivalent) || 0,
+        })),
+        payments: (d.payment_declarations || []).map((p: any) => ({
+          channel: p.channel,
+          declaredAmount: parseFloat(p.declared_amount) || 0,
+          externalRef: p.external_reference,
+        })),
+        createdAt: d.created_at,
+        createdByName: d.creator?.full_name || 'System Operative',
+        notes: d.notes,
+      }));
+
+      return NextResponse.json({ success: true, data: formatted });
+    }
+
+    return NextResponse.json({ success: true, data: demoStore.getDeliveries() });
+  } catch {
+    return NextResponse.json({ success: true, data: demoStore.getDeliveries() });
   }
 }

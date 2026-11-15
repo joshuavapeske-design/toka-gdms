@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/sms/africas-talking';
+import { demoStore } from '@/lib/demo-store';
 
 export async function POST(request: Request) {
   try {
@@ -83,8 +84,13 @@ export async function POST(request: Request) {
     const isConfigured = supabaseUrl && !supabaseUrl.includes('placeholder') && !!serviceKey;
 
     if (!isConfigured) {
-      console.log('[INBOUND SMS] Admin Supabase client not configured in environment. Simulating response.');
-      return NextResponse.json({ success: true, simulated: true });
+      console.log(`[INBOUND SMS SIMULATION] Processing text: "${text}" from ${from}`);
+      const simResult = demoStore.processInboundSms(from, text);
+      return NextResponse.json({
+        success: true,
+        simulated: true,
+        ...simResult,
+      });
     }
 
     // Use admin client (bypasses RLS for public inbound webhook)
