@@ -15,26 +15,7 @@ const createAssignmentSchema = z.object({
   shiftDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'shiftDate must be YYYY-MM-DD' }).default(() => new Date().toISOString().split('T')[0]),
 });
 
-let simulatedAssignments = [
-  {
-    id: '55555555-5555-5555-5555-555555555501',
-    vehicleId: '77777777-7777-7777-7777-777777777701',
-    vehiclePlate: 'KBZ 123X',
-    vehicleModel: 'Isuzu FRR 10-Tonne Glass Carrier',
-    routeId: '66666666-6666-6666-6666-666666666601',
-    routeCode: 'RT-01',
-    routeName: 'Industrial Area - Gikomba Express',
-    driverId: '00000000-0000-0000-0000-000000000004',
-    driverName: 'David Ochieng',
-    salespersonId: '00000000-0000-0000-0000-000000000003',
-    salespersonName: 'Grace Muthoni',
-    shiftDate: new Date().toISOString().split('T')[0],
-    startedAt: new Date().toISOString(),
-    endedAt: null,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+let simulatedAssignments: any[] = [];
 
 export async function GET() {
   try {
@@ -62,14 +43,7 @@ export async function GET() {
           make_model,
           stock_locations (
             id,
-            name,
-            inventory_balances (
-              product_id,
-              full_sheets,
-              half_sheets,
-              fse,
-              products (name, sku)
-            )
+            name
           )
         ),
         routes (code, name),
@@ -79,22 +53,13 @@ export async function GET() {
       .order('shift_date', { ascending: false })
       .order('is_active', { ascending: false });
 
-    if (error || !data || data.length === 0) {
+    if (error || !data) {
       return NextResponse.json({ success: true, data: demoStore.getAssignments() });
     }
 
     const formatted = data.map((va: any) => {
       const truckLocation = va.vehicles?.stock_locations?.[0];
-      const onboardStock = (truckLocation?.inventory_balances || []).map((b: any) => ({
-        productId: b.product_id,
-        productName: b.products?.name || 'Glass',
-        sku: b.products?.sku || '',
-        locationId: truckLocation?.id,
-        locationName: truckLocation?.name,
-        fullSheets: b.full_sheets,
-        halfSheets: b.half_sheets,
-        fseTotal: parseFloat(b.fse) || (b.full_sheets + b.half_sheets * 0.5),
-      }));
+      const onboardStock: any[] = [];
 
       return {
         id: va.id,

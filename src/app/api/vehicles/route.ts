@@ -33,14 +33,7 @@ export async function GET() {
         created_at,
         stock_locations (
           id,
-          name,
-          inventory_balances (
-            product_id,
-            full_sheets,
-            half_sheets,
-            fse,
-            products (name, sku)
-          )
+          name
         )
       `)
       .eq('is_active', true)
@@ -53,16 +46,7 @@ export async function GET() {
 
     const formatted = data.map((v: any) => {
       const truckLocation = v.stock_locations?.[0];
-      const onboardStock = (truckLocation?.inventory_balances || []).map((b: any) => ({
-        productId: b.product_id,
-        productName: b.products?.name || 'Glass',
-        sku: b.products?.sku || '',
-        locationId: truckLocation?.id,
-        locationName: truckLocation?.name,
-        fullSheets: b.full_sheets,
-        halfSheets: b.half_sheets,
-        fseTotal: parseFloat(b.fse) || (b.full_sheets + b.half_sheets * 0.5),
-      }));
+      const onboardStock: any[] = [];
 
       return {
         id: v.id,

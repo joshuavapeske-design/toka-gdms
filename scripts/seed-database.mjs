@@ -13,255 +13,256 @@ async function seed() {
   console.log('TOKA GDMS — SEEDING SUPABASE OPERATIONAL DATA');
   console.log('====================================================');
 
-  // 1. Create or retrieve Owner Auth user
-  const ownerEmail = 'owner@tokaglass.co.ke';
-  const ownerPassword = 'TokaOwner2026!';
-
-  console.log(`\n1. Creating Owner Auth User (${ownerEmail})...`);
+  // Retrieve existing auth users
   const { data: userList } = await supabase.auth.admin.listUsers();
-  let ownerUser = userList?.users?.find((u) => u.email === ownerEmail);
+  const existingUsers = userList?.users || [];
 
-  if (!ownerUser) {
-    const { data: newUser, error: createErr } = await supabase.auth.admin.createUser({
-      email: ownerEmail,
-      password: ownerPassword,
-      email_confirm: true,
-      user_metadata: { full_name: 'TOKA Owner / Executive' },
-    });
-
-    if (createErr) {
-      console.error('Failed to create owner user:', createErr.message);
-      return;
-    }
-    ownerUser = newUser.user;
-    console.log(`✅ Created owner user: ${ownerUser.id}`);
-  } else {
-    console.log(`ℹ️ Owner user already exists: ${ownerUser.id}`);
-  }
-
-  // 2. Create Staff Users (Driver, Salesperson, Accountant)
-  const staff = [
-    { email: 'sales@tokaglass.co.ke', name: 'Grace Muthoni', role: 'salesperson', phone: '+254700000003' },
-    { email: 'driver@tokaglass.co.ke', name: 'David Ochieng', role: 'driver', phone: '+254700000004' },
-    { email: 'accountant@tokaglass.co.ke', name: 'Alice Wanjiku', role: 'accountant', phone: '+254700000002' },
-  ];
-
-  const profileMap = new Map();
-  profileMap.set('owner', ownerUser.id);
-
-  console.log('\n2. Creating Staff Accounts & Profiles...');
-  for (const member of staff) {
-    let staffUser = userList?.users?.find((u) => u.email === member.email);
-    if (!staffUser) {
-      const { data: created, error } = await supabase.auth.admin.createUser({
-        email: member.email,
-        password: 'TokaStaff2026!',
+  // ── Helper: create or find auth user ──────────────────────
+  async function ensureUser(email, password, fullName) {
+    let user = existingUsers.find((u) => u.email === email);
+    if (!user) {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password,
         email_confirm: true,
-        user_metadata: { full_name: member.name },
+        user_metadata: { full_name: fullName },
       });
       if (error) {
-        console.error(`Error creating ${member.email}:`, error.message);
-        continue;
+        console.error(`  ❌ Failed to create ${email}: ${error.message}`);
+        return null;
       }
-      staffUser = created.user;
+      user = data.user;
+      console.log(`  ✅ Created auth user: ${email}`);
+    } else {
+      console.log(`  ℹ️  Auth user exists: ${email}`);
     }
-    profileMap.set(member.role, staffUser.id);
-
-    // Upsert profile
-    const { error: profErr } = await supabase.from('profiles').upsert({
-      id: staffUser.id,
-      full_name: member.name,
-      role: member.role,
-      phone_number: member.phone,
-      is_active: true,
-    });
-    if (profErr) console.error(`Error upserting profile for ${member.name}:`, profErr.message);
-    else console.log(`✅ Profile ready: ${member.name} (${member.role})`);
+    return user;
   }
 
-  // Upsert Owner Profile
-  const { error: ownerProfErr } = await supabase.from('profiles').upsert({
-    id: ownerUser.id,
-    full_name: 'TOKA Owner / Executive',
-    role: 'owner',
-    phone_number: '+254700000001',
-    is_active: true,
-  });
-  if (ownerProfErr) console.error('Error upserting owner profile:', ownerProfErr.message);
-  else console.log('✅ Owner Profile ready: TOKA Owner / Executive (owner)');
+  // ── Helper: upsert profile ────────────────────────────────
+  async function upsertProfile(id, fullName, role, phone) {
+    const { error } = await supabase.from('profiles').upsert({
+      id,
+      full_name: fullName,
+      role,
+      phone_number: phone,
+      is_active: true,
+    });
+    if (error) console.error(`  ❌ Profile error for ${fullName}: ${error.message}`);
+    else console.log(`  ✅ Profile: ${fullName} (${role})`);
+  }
 
-  // 3. Vehicles & Delivery Routes
-  console.log('\n3. Seeding Vehicles & Delivery Routes...');
-  const { data: vehicle, error: vehErr } = await supabase
-    .from('vehicles')
-    .upsert(
-      {
-        registration_plate: 'KBZ 123X',
-        make_model: 'Isuzu FRR 10-Tonne Glass Carrier',
-        tonnage_capacity: 10.0,
-        status: 'active',
-        is_active: true,
-      },
-      { onConflict: 'registration_plate' }
-    )
-    .select()
-    .single();
+  // ══════════════════════════════════════════════════════════
+  // 1. CREATE ALL USERS & PROFILES
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 1. Creating Users & Profiles ──────────────────');
 
-  if (vehErr) console.error('Vehicle upsert error:', vehErr.message);
-  else console.log(`✅ Vehicle ready: ${vehicle.registration_plate} (ID: ${vehicle.id})`);
+  const accounts = [
+    { email: 'owner@tokaglass.co.ke',      password: 'TokaOwner2026!',  name: 'Titus Kamau (Owner)',        role: 'owner',          phone: '+254700000001' },
+    { email: 'manager@tokaglass.co.ke',     password: 'TokaManager2026!', name: 'James Mwangi (Manager)',   role: 'manager',        phone: '+254700000002' },
+    { email: 'sales@tokaglass.co.ke',       password: 'TokaStaff2026!',  name: 'Grace Muthoni',             role: 'salesperson',    phone: '+254700000003' },
+    { email: 'sales2@tokaglass.co.ke',      password: 'TokaStaff2026!',  name: 'Peter Njuguna',             role: 'salesperson',    phone: '+254700000006' },
+    { email: 'driver@tokaglass.co.ke',      password: 'TokaStaff2026!',  name: 'David Ochieng',             role: 'driver',         phone: '+254700000004' },
+    { email: 'accountant@tokaglass.co.ke',  password: 'TokaStaff2026!',  name: 'Alice Wanjiku',             role: 'accountant',     phone: '+254700000005' },
+    { email: 'collector@tokaglass.co.ke',   password: 'TokaStaff2026!',  name: 'Brian Otieno',              role: 'cash_collector', phone: '+254700000007' },
+  ];
 
-  const { data: route, error: routeErr } = await supabase
-    .from('routes')
-    .upsert(
-      {
-        code: 'RT-01',
-        name: 'Industrial Area - Gikomba Express',
-        description: 'Main commercial workshop delivery route',
-        is_active: true,
-      },
-      { onConflict: 'code' }
-    )
-    .select()
-    .single();
+  const profileMap = {};
 
-  if (routeErr) console.error('Route upsert error:', routeErr.message);
-  else console.log(`✅ Route ready: ${route.code} - ${route.name}`);
+  for (const acct of accounts) {
+    const user = await ensureUser(acct.email, acct.password, acct.name);
+    if (user) {
+      profileMap[acct.role] = user.id;
+      // Store extra salesperson IDs separately
+      if (acct.email === 'sales2@tokaglass.co.ke') profileMap['salesperson2'] = user.id;
+      await upsertProfile(user.id, acct.name, acct.role, acct.phone);
+    }
+  }
 
-  // 4. Vehicle Stock Location & Active Shift Assignment
-  if (vehicle && route && profileMap.get('driver') && profileMap.get('salesperson')) {
-    console.log('\n4. Setting up Active Vehicle Shift & Truck Stock Bay...');
-    const { data: truckLoc } = await supabase
+  // ══════════════════════════════════════════════════════════
+  // 2. REGISTER VEHICLES (COMPANY-OWNED FLEET)
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 2. Registering Vehicles ───────────────────────');
+
+  const vehiclesData = [
+    { registration_plate: 'KBZ 123X', make_model: 'Isuzu FRR 10-Tonne Glass Carrier', tonnage_capacity: 10.0, ownership_type: 'owned' },
+    { registration_plate: 'KCE 456Y', make_model: 'Mitsubishi Canter 5-Tonne', tonnage_capacity: 5.0, ownership_type: 'owned' },
+  ];
+
+  const vehicleIds = {};
+  for (const v of vehiclesData) {
+    const { data, error } = await supabase
+      .from('vehicles')
+      .upsert({ ...v, status: 'active', is_active: true }, { onConflict: 'registration_plate' })
+      .select()
+      .single();
+    if (error) console.error(`  ❌ Vehicle ${v.registration_plate}: ${error.message}`);
+    else {
+      vehicleIds[v.registration_plate] = data.id;
+      console.log(`  ✅ Vehicle: ${v.registration_plate} — ${v.make_model}`);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // 3. CREATE ROUTES
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 3. Creating Delivery Routes ───────────────────');
+
+  const routesData = [
+    { code: 'RT-01', name: 'Industrial Area - Gikomba Express', description: 'Main commercial workshop delivery route' },
+    { code: 'RT-02', name: 'Westlands - Parklands Loop', description: 'Premium residential and office route' },
+  ];
+
+  const routeIds = {};
+  for (const r of routesData) {
+    const { data, error } = await supabase
+      .from('routes')
+      .upsert({ ...r, is_active: true }, { onConflict: 'code' })
+      .select()
+      .single();
+    if (error) console.error(`  ❌ Route ${r.code}: ${error.message}`);
+    else {
+      routeIds[r.code] = data.id;
+      console.log(`  ✅ Route: ${r.code} — ${r.name}`);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // 4. CREATE TRUCK STOCK LOCATIONS
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 4. Setting Up Truck Stock Locations ───────────');
+
+  const truckLocIds = {};
+  for (const plate of Object.keys(vehicleIds)) {
+    const { data, error } = await supabase
       .from('stock_locations')
       .upsert(
-        {
-          name: `Truck ${vehicle.registration_plate} Mobile Bay`,
-          location_type: 'truck',
-          vehicle_id: vehicle.id,
-          is_active: true,
-        },
+        { name: `Truck ${plate}`, location_type: 'truck', vehicle_id: vehicleIds[plate], is_active: true },
         { onConflict: 'name' }
       )
       .select()
       .single();
-
-    if (truckLoc) console.log(`✅ Truck stock location ready: ${truckLoc.name}`);
-
-    // Create Today's Shift Assignment
-    const today = new Date().toISOString().split('T')[0];
-    const { data: shift, error: shiftErr } = await supabase
-      .from('vehicle_assignments')
-      .upsert({
-        vehicle_id: vehicle.id,
-        route_id: route.id,
-        driver_id: profileMap.get('driver'),
-        salesperson_id: profileMap.get('salesperson'),
-        shift_date: today,
-        started_at: new Date().toISOString(),
-        is_active: true,
-      })
-      .select()
-      .single();
-
-    if (shiftErr) console.error('Shift creation error:', shiftErr.message);
-    else console.log(`✅ Daily shift assignment started: ${vehicle.registration_plate} on Route ${route.code}`);
-  }
-
-  // 5. Seed Warehouse Inventory Balances
-  console.log('\n5. Seeding Warehouse Inventory Balances...');
-  const { data: warehouse } = await supabase
-    .from('stock_locations')
-    .select('id, name')
-    .eq('location_type', 'warehouse')
-    .limit(1)
-    .single();
-
-  const { data: products } = await supabase.from('products').select('id, name, sku').limit(6);
-
-  if (warehouse && products && products.length > 0) {
-    for (const prod of products) {
-      await supabase.from('inventory_balances').upsert(
-        {
-          product_id: prod.id,
-          stock_location_id: warehouse.id,
-          full_sheets_count: 50,
-          half_sheets_count: 4,
-          full_sheet_equivalent: 52.0,
-        },
-        { onConflict: 'product_id,stock_location_id' }
-      );
-      console.log(`✅ Stocked ${prod.name}: 50 Full Sheets, 4 Half Sheets (52.0 FSE)`);
+    if (error) console.error(`  ❌ Truck location ${plate}: ${error.message}`);
+    else {
+      truckLocIds[plate] = data.id;
+      console.log(`  ✅ Truck stock location: ${data.name}`);
     }
   }
 
-  // 6. Customers & Credit Accounts
-  console.log('\n6. Seeding Customer Directory & Credit Accounts...');
-  const customers = [
-    {
-      account_number: 'CUST-001',
-      name: 'Apex Glaziers & Aluminum Works',
-      primary_phone: '+254712345678',
-      alt_phone: '+254722111222',
-      delivery_area: 'Industrial Area, Road C',
-      is_credit_eligible: true,
-      credit_limit: 250000.0,
-      created_by: ownerUser.id,
-    },
-    {
-      account_number: 'CUST-002',
-      name: 'Nairobi Modern Hardware',
-      primary_phone: '+254723456789',
-      delivery_area: 'Gikomba, Quarry Road',
-      is_credit_eligible: true,
-      credit_limit: 150000.0,
-      created_by: ownerUser.id,
-    },
-    {
-      account_number: 'CUST-003',
-      name: 'Westlands Premium Interiors',
-      primary_phone: '+254734567890',
-      delivery_area: 'Westlands, Muthithi Road',
-      is_credit_eligible: false,
-      credit_limit: 0.0,
-      created_by: ownerUser.id,
-    },
-    {
-      account_number: 'CUST-004',
-      name: 'Eastleigh Glass & Mirror Centre',
-      primary_phone: '+254745678901',
-      delivery_area: 'Eastleigh, 1st Avenue',
-      is_credit_eligible: true,
-      credit_limit: 500000.0,
-      created_by: ownerUser.id,
-    },
+  // ══════════════════════════════════════════════════════════
+  // 5. DISPATCH CREW SHIFTS (2-3 PEOPLE PER TRUCK)
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 5. Dispatching Crew Shifts ────────────────────');
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Truck 1: Driver David + Salesperson Grace + Salesperson2 Peter  
+  if (vehicleIds['KBZ 123X'] && routeIds['RT-01'] && profileMap.driver && profileMap.salesperson) {
+    const crewIds = [profileMap.driver, profileMap.salesperson];
+    if (profileMap.salesperson2) crewIds.push(profileMap.salesperson2);
+
+    const { error } = await supabase.from('vehicle_assignments').upsert({
+      vehicle_id: vehicleIds['KBZ 123X'],
+      route_id: routeIds['RT-01'],
+      driver_id: profileMap.driver,
+      salesperson_id: profileMap.salesperson,
+      secondary_salesperson_id: profileMap.salesperson2 || null,
+      crew_ids: crewIds,
+      shift_date: today,
+      started_at: new Date().toISOString(),
+      is_active: true,
+    }).select().single();
+    if (error) console.error(`  ❌ Shift KBZ 123X: ${error.message}`);
+    else console.log(`  ✅ Shift: KBZ 123X → Driver David + Grace + Peter on RT-01`);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // 6. LOAD GLASS STOCK ONTO TRUCKS (via stock_movements)
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 6. Loading Glass onto Trucks ──────────────────');
+
+  const warehouseId = '33333333-3333-3333-3333-333333333301';
+  const products = [
+    { id: '22222222-2222-2222-2222-222222222201', name: '4mm Clear', full: 20, half: 4 },
+    { id: '22222222-2222-2222-2222-222222222202', name: '5mm Clear', full: 15, half: 2 },
+    { id: '22222222-2222-2222-2222-222222222203', name: '6mm Clear', full: 10, half: 0 },
+    { id: '22222222-2222-2222-2222-222222222204', name: '5mm Bronze', full: 8,  half: 0 },
+    { id: '22222222-2222-2222-2222-222222222205', name: '5mm Grey',  full: 5,  half: 2 },
+    { id: '22222222-2222-2222-2222-222222222206', name: '4mm Mirror', full: 6,  half: 0 },
   ];
 
-  for (const c of customers) {
-    const { data: cust, error: cErr } = await supabase
+  for (const plate of Object.keys(truckLocIds)) {
+    for (const p of products) {
+      // Stock movement: warehouse → truck
+      const fse = p.full + (p.half * 0.5);
+      const { error } = await supabase.from('stock_movements').insert({
+        product_id: p.id,
+        from_location_id: warehouseId,
+        to_location_id: truckLocIds[plate],
+        full_sheets_delta: p.full,
+        half_sheets_delta: p.half,
+        fse_delta: fse,
+        movement_type: 'dispatch_to_truck',
+        responsible_employee_id: profileMap.owner || profileMap.manager,
+        notes: `Initial truck loading for ${plate}`,
+      });
+      if (error) console.error(`  ❌ Stock ${p.name} → ${plate}: ${error.message}`);
+      else console.log(`  ✅ Loaded ${p.full}F/${p.half}H ${p.name} → ${plate}`);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // 7. SEED CUSTOMERS
+  // ══════════════════════════════════════════════════════════
+  console.log('\n── 7. Seeding Customers ─────────────────────────');
+
+  const customersData = [
+    { account_number: 'CUST-001', name: 'Apex Glaziers & Aluminum Works',    primary_phone: '+254712345678', delivery_area: 'Industrial Area, Road C', is_credit_eligible: true,  credit_limit: 250000.0 },
+    { account_number: 'CUST-002', name: 'Nairobi Modern Hardware',           primary_phone: '+254723456789', delivery_area: 'Gikomba, Quarry Road',    is_credit_eligible: true,  credit_limit: 150000.0 },
+    { account_number: 'CUST-003', name: 'Westlands Premium Interiors',       primary_phone: '+254734567890', delivery_area: 'Westlands, Muthithi Road', is_credit_eligible: false, credit_limit: 0.0 },
+    { account_number: 'CUST-004', name: 'Eastleigh Glass & Mirror Centre',   primary_phone: '+254745678901', delivery_area: 'Eastleigh, 1st Avenue',   is_credit_eligible: true,  credit_limit: 500000.0 },
+  ];
+
+  const ownerId = profileMap.owner;
+
+  for (const c of customersData) {
+    const { data: cust, error } = await supabase
       .from('customers')
-      .upsert(c, { onConflict: 'account_number' })
+      .upsert({ ...c, created_by: ownerId }, { onConflict: 'account_number' })
       .select()
       .single();
 
-    if (cErr) {
-      console.error(`Customer error (${c.name}):`, cErr.message);
-    } else if (cust) {
+    if (error) {
+      console.error(`  ❌ Customer ${c.name}: ${error.message}`);
+    } else {
+      // Upsert credit account
       await supabase.from('credit_accounts').upsert({
         customer_id: cust.id,
         current_balance: 0.0,
         total_credit_extended: 0.0,
         total_credit_repaid: 0.0,
       });
-      console.log(`✅ Customer ready: ${cust.name} (${cust.account_number})`);
+      console.log(`  ✅ Customer: ${cust.name} (${cust.account_number})`);
     }
   }
 
+  // ══════════════════════════════════════════════════════════
+  // DONE — Print Login Credentials
+  // ══════════════════════════════════════════════════════════
   console.log('\n====================================================');
-  console.log('SEEDING COMPLETED SUCCESSFULLY!');
-  console.log('Owner Login Credentials:');
-  console.log(`Email:    ${ownerEmail}`);
-  console.log(`Password: ${ownerPassword}`);
+  console.log('✅ SEEDING COMPLETED SUCCESSFULLY!');
   console.log('====================================================');
+  console.log('');
+  console.log('LOGIN CREDENTIALS:');
+  console.log('──────────────────────────────────────────');
+  console.log('  Owner:          owner@tokaglass.co.ke      / TokaOwner2026!');
+  console.log('  Manager:        manager@tokaglass.co.ke    / TokaManager2026!');
+  console.log('  Salesperson 1:  sales@tokaglass.co.ke      / TokaStaff2026!');
+  console.log('  Salesperson 2:  sales2@tokaglass.co.ke     / TokaStaff2026!');
+  console.log('  Driver:         driver@tokaglass.co.ke     / TokaStaff2026!');
+  console.log('  Accountant:     accountant@tokaglass.co.ke / TokaStaff2026!');
+  console.log('  Cash Collector: collector@tokaglass.co.ke  / TokaStaff2026!');
+  console.log('──────────────────────────────────────────');
 }
 
 seed().catch(console.error);
-

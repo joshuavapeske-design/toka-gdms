@@ -4,74 +4,8 @@ import { z } from 'zod';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Customer } from '@/types';
 
-// Default seed customers for development and initial field cache only when DB unconfigured
-let currentCustomers: Customer[] = [
-  {
-    id: '44444444-4444-4444-4444-444444444401',
-    accountNumber: 'CUST-001',
-    name: 'Apex Glaziers & Aluminum Works',
-    primaryPhone: '+254712345678',
-    altPhone: '+254722111222',
-    deliveryArea: 'Industrial Area, Road C',
-    defaultGpsLat: -1.3032,
-    defaultGpsLng: 36.8524,
-    isCreditEligible: true,
-    creditLimit: 250000.0,
-    currentBalance: 42000.0,
-    isActive: true,
-    createdBy: 'system',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '44444444-4444-4444-4444-444444444402',
-    accountNumber: 'CUST-002',
-    name: 'Nairobi Modern Hardware',
-    primaryPhone: '+254723456789',
-    deliveryArea: 'Gikomba, Quarry Road',
-    defaultGpsLat: -1.2845,
-    defaultGpsLng: 36.8378,
-    isCreditEligible: true,
-    creditLimit: 150000.0,
-    currentBalance: 0.0,
-    isActive: true,
-    createdBy: 'system',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '44444444-4444-4444-4444-444444444403',
-    accountNumber: 'CUST-003',
-    name: 'Westlands Premium Interiors',
-    primaryPhone: '+254734567890',
-    deliveryArea: 'Westlands, Muthithi Road',
-    defaultGpsLat: -1.2654,
-    defaultGpsLng: 36.8045,
-    isCreditEligible: false,
-    creditLimit: 0.0,
-    currentBalance: 0.0,
-    isActive: true,
-    createdBy: 'system',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '44444444-4444-4444-4444-444444444404',
-    accountNumber: 'CUST-004',
-    name: 'Eastleigh Glass & Mirror Centre',
-    primaryPhone: '+254745678901',
-    deliveryArea: 'Eastleigh, 1st Avenue',
-    defaultGpsLat: -1.2789,
-    defaultGpsLng: 36.8512,
-    isCreditEligible: true,
-    creditLimit: 500000.0,
-    currentBalance: 120000.0,
-    isActive: true,
-    createdBy: 'system',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+// Clean customers array - starts empty for real operations
+let currentCustomers: Customer[] = [];
 
 function normalizePhone(phone: string): string {
   const cleaned = phone.trim().replace(/[\s-]/g, '');
