@@ -96,6 +96,13 @@ $$;
 GRANT EXECUTE ON FUNCTION assign_vehicle_glass_stock TO authenticated, service_role;
 
 -- 5. UPDATE SUBMIT_DELIVERY_ATOMIC TO AUTHORIZE ANY CREW MEMBER
+-- Drop the old signature first to avoid "function name is not unique" error
+DROP FUNCTION IF EXISTS submit_delivery_atomic(
+    TEXT, UUID, TEXT, UUID, UUID, UUID,
+    NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC,
+    payment_status_enum,
+    NUMERIC, NUMERIC, NUMERIC, TIMESTAMPTZ, BOOLEAN, TEXT, JSONB, JSONB, UUID
+);
 CREATE OR REPLACE FUNCTION submit_delivery_atomic(
     p_delivery_reference TEXT,
     p_client_tx_id UUID,
@@ -687,3 +694,4 @@ BEGIN
 END;
 $$;
 GRANT EXECUTE ON FUNCTION submit_delivery_atomic TO authenticated, service_role;
+
